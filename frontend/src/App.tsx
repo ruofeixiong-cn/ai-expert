@@ -7,6 +7,7 @@ import { Button, Spinner } from "@/components/ui";
 import LoginPage from "@/features/auth/LoginPage";
 import ExpertListPage from "@/features/experts/ExpertListPage";
 import ExpertDetailPage from "@/features/experts/ExpertDetailPage";
+import ModelPage from "@/features/experts/ModelPage";
 
 const qc = new QueryClient({
   defaultOptions: {
@@ -62,6 +63,7 @@ export default function App() {
           <Route path="/app" element={<Protected />}>
             <Route index element={<ExpertListPage />} />
             <Route path="experts/:id" element={<ExpertDetailPage />} />
+            <Route path="experts/:id/model" element={<ModelPage />} />
           </Route>
           <Route path="*" element={<Navigate to={authed ? "/app" : "/login"} replace />} />
         </Routes>

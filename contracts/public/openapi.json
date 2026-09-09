@@ -685,65 +685,6 @@
           "evidenceChunkIds"
         ]
       },
-      "ExpertModel": {
-        "type": [
-          "object",
-          "null"
-        ],
-        "properties": {
-          "persona": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ModelItem"
-            }
-          },
-          "knowledge": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ModelItem"
-            }
-          },
-          "beliefs": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ModelItem"
-            }
-          },
-          "methodology": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ModelItem"
-            }
-          },
-          "decisionRules": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ModelItem"
-            }
-          },
-          "boundaries": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/BoundaryItem"
-            }
-          },
-          "examples": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ExampleItem"
-            }
-          }
-        },
-        "required": [
-          "persona",
-          "knowledge",
-          "beliefs",
-          "methodology",
-          "decisionRules",
-          "boundaries",
-          "examples"
-        ]
-      },
       "Dimension": {
         "type": "string",
         "enum": [
@@ -760,7 +701,63 @@
         "type": "object",
         "properties": {
           "draft": {
-            "$ref": "#/components/schemas/ExpertModel"
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "persona": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ModelItem"
+                }
+              },
+              "knowledge": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ModelItem"
+                }
+              },
+              "beliefs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ModelItem"
+                }
+              },
+              "methodology": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ModelItem"
+                }
+              },
+              "decisionRules": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ModelItem"
+                }
+              },
+              "boundaries": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/BoundaryItem"
+                }
+              },
+              "examples": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExampleItem"
+                }
+              }
+            },
+            "required": [
+              "persona",
+              "knowledge",
+              "beliefs",
+              "methodology",
+              "decisionRules",
+              "boundaries",
+              "examples"
+            ]
           },
           "generatedAt": {
             "type": [
@@ -770,7 +767,63 @@
             "format": "date-time"
           },
           "confirmed": {
-            "$ref": "#/components/schemas/ExpertModel"
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "persona": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ModelItem"
+                }
+              },
+              "knowledge": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ModelItem"
+                }
+              },
+              "beliefs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ModelItem"
+                }
+              },
+              "methodology": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ModelItem"
+                }
+              },
+              "decisionRules": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ModelItem"
+                }
+              },
+              "boundaries": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/BoundaryItem"
+                }
+              },
+              "examples": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExampleItem"
+                }
+              }
+            },
+            "required": [
+              "persona",
+              "knowledge",
+              "beliefs",
+              "methodology",
+              "decisionRules",
+              "boundaries",
+              "examples"
+            ]
           },
           "confirmedDimensions": {
             "type": "array",

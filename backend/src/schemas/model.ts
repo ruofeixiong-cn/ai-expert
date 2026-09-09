@@ -51,25 +51,35 @@ export const ExampleItem = z
   })
   .openapi("ExampleItem");
 
-export const ExpertModel = z
-  .object({
-    persona: z.array(ModelItem),
-    knowledge: z.array(ModelItem),
-    beliefs: z.array(ModelItem),
-    methodology: z.array(ModelItem),
-    decisionRules: z.array(ModelItem),
-    boundaries: z.array(BoundaryItem),
-    examples: z.array(ExampleItem),
-  })
-  .openapi("ExpertModel");
+/**
+ * ⚠️ 形状单独抽出来复用，而不是对具名组件直接 `.nullable()`。
+ *
+ * 写成 `ExpertModel.nullable()` 的话，@hono/zod-openapi 会把 nullable
+ * 烘进【具名组件】本身，生成的类型变成 `ExpertModel = {...} | null`，
+ * 于是前端 `keyof ExpertModel` 得到 never，整个维度遍历直接失效。
+ * 组件本身不该是可空的 —— 可空性属于使用它的那个字段。
+ */
+const expertModelShape = {
+  persona: z.array(ModelItem),
+  knowledge: z.array(ModelItem),
+  beliefs: z.array(ModelItem),
+  methodology: z.array(ModelItem),
+  decisionRules: z.array(ModelItem),
+  boundaries: z.array(BoundaryItem),
+  examples: z.array(ExampleItem),
+};
+
+// 仅供后端内部推导类型用。不注册成具名组件：它只出现在 ModelView 的两个
+// 可空字段里，注册了反而会让生成的类型带上 | null（见上面的说明）。
+export const ExpertModel = z.object(expertModelShape);
 
 export const ModelView = z
   .object({
     /** AI 生成的草稿。还没构建过则为 null。 */
-    draft: ExpertModel.nullable(),
+    draft: z.object(expertModelShape).nullable(),
     generatedAt: z.string().datetime().nullable(),
-    /** 博主确认过的定稿。未确认任何维度则为 null。 */
-    confirmed: ExpertModel.nullable(),
+    /** 有效模型：确认过的维度用博主版本，未确认的用草稿。都没有则为 null。 */
+    confirmed: z.object(expertModelShape).nullable(),
     confirmedDimensions: z.array(Dimension).openapi({
       description: "博主已确认的维度。未确认的维度按草稿「默认通过」。",
     }),

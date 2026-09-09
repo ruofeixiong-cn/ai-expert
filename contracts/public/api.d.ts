@@ -1398,22 +1398,29 @@ export interface components {
             answer: string;
             evidenceChunkIds: string[];
         };
-        ExpertModel: {
-            persona: components["schemas"]["ModelItem"][];
-            knowledge: components["schemas"]["ModelItem"][];
-            beliefs: components["schemas"]["ModelItem"][];
-            methodology: components["schemas"]["ModelItem"][];
-            decisionRules: components["schemas"]["ModelItem"][];
-            boundaries: components["schemas"]["BoundaryItem"][];
-            examples: components["schemas"]["ExampleItem"][];
-        } | null;
         /** @enum {string} */
         Dimension: "persona" | "knowledge" | "beliefs" | "methodology" | "decisionRules" | "boundaries" | "examples";
         ModelView: {
-            draft: components["schemas"]["ExpertModel"];
+            draft: {
+                persona: components["schemas"]["ModelItem"][];
+                knowledge: components["schemas"]["ModelItem"][];
+                beliefs: components["schemas"]["ModelItem"][];
+                methodology: components["schemas"]["ModelItem"][];
+                decisionRules: components["schemas"]["ModelItem"][];
+                boundaries: components["schemas"]["BoundaryItem"][];
+                examples: components["schemas"]["ExampleItem"][];
+            } | null;
             /** Format: date-time */
             generatedAt: string | null;
-            confirmed: components["schemas"]["ExpertModel"];
+            confirmed: {
+                persona: components["schemas"]["ModelItem"][];
+                knowledge: components["schemas"]["ModelItem"][];
+                beliefs: components["schemas"]["ModelItem"][];
+                methodology: components["schemas"]["ModelItem"][];
+                decisionRules: components["schemas"]["ModelItem"][];
+                boundaries: components["schemas"]["BoundaryItem"][];
+                examples: components["schemas"]["ExampleItem"][];
+            } | null;
             /** @description 博主已确认的维度。未确认的维度按草稿「默认通过」。 */
             confirmedDimensions: components["schemas"]["Dimension"][];
             chunkCount: number;

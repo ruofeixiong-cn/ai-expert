@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, FileText, Link2, ClipboardPaste, Hammer } from "lucide-react";
+import { ArrowLeft, FileText, Link2, ClipboardPaste, Hammer, Sparkles } from "lucide-react";
 import { api, errorMessage, type ReqBody } from "@/api/client";
 import { Alert, Button, Card, Input, Label, Progress, Spinner, Textarea } from "@/components/ui";
 
@@ -108,6 +108,27 @@ export default function ExpertDetailPage() {
           {building ? "构建中" : e.chunkCount > 0 ? "重新构建" : "开始构建"}
         </Button>
       </div>
+
+      {e.hasDraft && (
+        <Link to={`/app/experts/${id}/model`} className="mt-4 block">
+          <Card className="flex items-center justify-between p-4 transition hover:border-brand-500 hover:shadow-sm">
+            <div className="flex items-center gap-3">
+              <Sparkles className="size-5 text-brand-600" />
+              <div>
+                <div className="text-sm font-medium">
+                  {e.confirmedDimensions.length > 0 ? "继续确认专家模型" : "AI 已经读完了你的内容"}
+                </div>
+                <div className="mt-0.5 text-xs text-ink-600">
+                  {e.shareSlug
+                    ? "已上线 · 可继续调整后重新上线"
+                    : `去看看 AI 理解的你（已确认 ${e.confirmedDimensions.length}/7 块）`}
+                </div>
+              </div>
+            </div>
+            <span className="text-sm text-brand-600">查看 →</span>
+          </Card>
+        </Link>
+      )}
 
       {job && (
         <Card className="mt-4 p-4">

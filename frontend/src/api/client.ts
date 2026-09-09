@@ -1,7 +1,7 @@
 import createClient from "openapi-fetch";
 // ⚠️ 唯一允许引入后端类型的地方，且只能从生成的契约引入。
 // 手写接口类型 = 契约失效：后端改字段名时前端不会报错，等到联调才发现。
-import type { paths } from "../../../contracts/public/api.d.ts";
+import type { paths, components } from "../../../contracts/public/api.d.ts";
 import { getAccessToken, refreshAccessToken } from "../lib/auth";
 
 /** 认证接口自己管 Cookie，不该被 401 重试逻辑掺和。 */
@@ -54,6 +54,9 @@ export type ReqBody<P extends keyof paths> = paths[P] extends {
 }
   ? B
   : never;
+
+/** 契约里定义的数据结构。页面代码用它标注状态，后端改结构时编译期就会炸。 */
+export type Schema<K extends keyof components["schemas"]> = components["schemas"][K];
 
 /** 后端统一响应体 {code, message, data}；错误码表见 contracts/README.md。 */
 export type ApiError = { code: number; message: string; data: null };
