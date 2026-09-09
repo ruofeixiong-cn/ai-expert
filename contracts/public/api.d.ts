@@ -854,6 +854,107 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 按分享短链获取专家信息
+         * @description 专家未上线时返回 404 —— 不泄露这个短链是否存在过。
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 专家信息 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["ChatExpertInfo"];
+                        };
+                    };
+                };
+                /** @description 短链无效或专家未上线 */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * 向 AI 专家提问（SSE 流式返回）
+         * @description 以 text/event-stream 返回，事件协议见 contracts/README.md。
+         *
+         *     召回结果全部低于置信度阈值时，直接回答「这个他没有讲过」，不调用生成模型 ——既防幻觉，也不为库里没有的问题花钱。
+         *
+         *     试聊额度用完时发 `event: error` + `code: 402`，而不是断流。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ChatInput"];
+                };
+            };
+            responses: {
+                /** @description SSE 事件流 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/event-stream": components["schemas"]["ChatStream"];
+                    };
+                };
+                /** @description 短链无效或专家未上线 */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/experts/{id}/model": {
         parameters: {
             query?: never;
@@ -1377,6 +1478,18 @@ export interface components {
              * @example https://mp.weixin.qq.com/s/xxxx
              */
             url: string;
+        };
+        ChatExpertInfo: {
+            name: string;
+            creatorNickname: string | null;
+            knowledgeSize: number;
+            priceCents: number;
+            trialRemaining: number;
+        };
+        /** @description SSE 事件流，协议见 contracts/README.md */
+        ChatStream: string;
+        ChatInput: {
+            question: string;
         };
         ModelItem: {
             content: string;

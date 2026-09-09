@@ -138,6 +138,9 @@ export const experts = pgTable(
     status: text("status").notNull().default("building"),
     priceCents: integer("price_cents").notNull().default(0),
     shareSlug: text("share_slug"),
+    // 免登录试聊条数。博主可调 —— 内容硬的专家可以少给几条，
+    // 冷门领域想多引流的可以多给。
+    freeTrialMessages: integer("free_trial_messages").notNull().default(3),
     // 博主已确认的维度。未确认的按草稿「默认通过」（产品文档 §8.4）。
     confirmedDimensions: text("confirmed_dimensions").array().notNull().default([]),
     publishedAt: timestamp("published_at", { withTimezone: true }),
@@ -247,6 +250,53 @@ export const chunks = pgTable(
   ],
 );
 
+// ── conversations ────────────────────────────────────────────
+// 一个粉丝与一个专家的一次会话。
+export const conversations = pgTable(
+  "conversations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull(),
+    expertId: uuid("expert_id").notNull().references(() => experts.id, { onDelete: "cascade" }),
+    // 粉丝。M3 阶段通常是匿名账号（users.is_anonymous），
+    // M5 接支付时登录即合并到真实账号。
+    fanUserId: uuid("fan_user_id").notNull().references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("conversations_expert_fan_idx").on(t.expertId, t.fanUserId)],
+);
+
+// ── messages ─────────────────────────────────────────────────
+// backend 写，agent 只读（M6 评测要读历史）。
+export const messages = pgTable(
+  "messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    // 'user' | 'assistant'
+    role: text("role").notNull(),
+    content: text("content").notNull(),
+    // 这次回答命中了哪些切片。M4 的「疑似盲区」要靠它定位问题出在哪，
+    // M6 评测要靠它算召回准确率。
+    chunkIds: uuid("chunk_ids").array().notNull().default([]),
+    // 本次召回的最高 rerank 分数。低置信度 + 负反馈 = 疑似盲区（M4）。
+    confidence: doublePrecision("confidence"),
+    // 'stop' | 'no_context' | 'length' | 'error'
+    finishReason: text("finish_reason"),
+    // 出口闸门结论：'pass' | 'disclaimed'
+    safety: text("safety"),
+    // 成本核算与看板要用
+    promptTokens: integer("prompt_tokens"),
+    completionTokens: integer("completion_tokens"),
+    latencyMs: integer("latency_ms"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("messages_conversation_idx").on(t.conversationId, t.createdAt)],
+);
+
 // ── build_jobs ───────────────────────────────────────────────
 // Python 写进度，Node 读给前端轮询。
 export const buildJobs = pgTable(
@@ -273,4 +323,5 @@ export const buildJobs = pgTable(
 export const schema = {
   users, tenants, authSessions, refreshTokens, loginAttempts,
   experts, expertModelDrafts, materials, chunks, buildJobs,
+  conversations, messages,
 };

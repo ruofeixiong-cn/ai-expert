@@ -1,5 +1,5 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { envelope, authedErrors, UuidParam } from "../schemas/common.js";
+import { envelope, authedErrors, ErrorBody, UuidParam } from "../schemas/common.js";
 import {
   RegisterInput, LoginInput, AuthResult, MeResult,
   RefreshResult, SessionInfo, RevokeResult,
@@ -11,6 +11,7 @@ import { CreateMaterialInput, CreateMaterialResult, Material } from "../schemas/
 import {
   Dimension, ModelView, ConfirmDimensionInput, PublishResult,
 } from "../schemas/model.js";
+import { ChatExpertInfo, ChatInput, ChatStream } from "../schemas/chat.js";
 
 /**
  * M1 的公开接口契约。
@@ -198,4 +199,47 @@ export const buildRoute = createRoute({
   security: bearer,
   request: { params: z.object({ id: UuidParam }) },
   responses: { 200: json("已入队", BuildResult), ...authedErrors },
+});
+
+// ─── 粉丝对话 ────────────────────────────────────────────────────────────────
+//
+// 这两个接口不需要登录 —— 分享页首屏要求注册等于转化率归零。
+// 粉丝身份靠签名 Cookie 里的匿名账号，试聊额度按它计。
+
+export const getChatExpertRoute = createRoute({
+  method: "get", path: "/api/chat/{slug}", tags: ["chat"],
+  summary: "按分享短链获取专家信息",
+  description: "专家未上线时返回 404 —— 不泄露这个短链是否存在过。",
+  request: { params: z.object({ slug: z.string().min(4).max(32) }) },
+  responses: {
+    200: json("专家信息", ChatExpertInfo),
+    404: {
+      description: "短链无效或专家未上线",
+      content: { "application/json": { schema: ErrorBody } },
+    },
+  },
+});
+
+export const chatRoute = createRoute({
+  method: "post", path: "/api/chat/{slug}", tags: ["chat"],
+  summary: "向 AI 专家提问（SSE 流式返回）",
+  description:
+    "以 text/event-stream 返回，事件协议见 contracts/README.md。\n\n" +
+    "召回结果全部低于置信度阈值时，直接回答「这个他没有讲过」，不调用生成模型 ——" +
+    "既防幻觉，也不为库里没有的问题花钱。\n\n" +
+    "试聊额度用完时发 `event: error` + `code: 402`，而不是断流。",
+  request: {
+    params: z.object({ slug: z.string().min(4).max(32) }),
+    body: body(ChatInput),
+  },
+  responses: {
+    200: {
+      description: "SSE 事件流",
+      content: { "text/event-stream": { schema: ChatStream } },
+    },
+    404: {
+      description: "短链无效或专家未上线",
+      content: { "application/json": { schema: ErrorBody } },
+    },
+  },
 });

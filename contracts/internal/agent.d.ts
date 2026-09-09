@@ -41,6 +41,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 召回 + 双闸门 + 流式生成（SSE）
+         * @description 以 text/event-stream 返回，协议见 contracts/README.md。
+         *
+         *     入口闸门：rerank 分数低于阈值的召回结果全部丢弃；一条不剩时直接返回「这个他没有讲过」，不调用生成模型。
+         *
+         *     出口闸门：流式下做不到边流边审，所以先流给用户、同时缓冲全文，流结束后校验一次禁区，命中则追加免责说明。
+         */
+        post: operations["chat_internal_chat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/internal/extract-model": {
         parameters: {
             query?: never;
@@ -128,6 +152,25 @@ export interface components {
             tenant_id: string;
             /** Material Ids */
             material_ids?: string[];
+        };
+        /**
+         * ChatRequest
+         * @description tenant_id 由 backend 从分享短链反查得出，绝不来自客户端。
+         *     agent 侧仍会用 experts 表再核对一次（纵深防御）。
+         */
+        ChatRequest: {
+            /**
+             * Expert Id
+             * Format: uuid
+             */
+            expert_id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** Question */
+            question: string;
         };
         /** ExtractModelRequest */
         ExtractModelRequest: {
@@ -260,6 +303,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExtractResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_internal_chat_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-internal-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "text/event-stream": unknown;
                 };
             };
             /** @description Validation Error */

@@ -126,3 +126,31 @@ async def test_agent_cannot_write_materials(seeded):
                 {"t": a["tenant_id"], "e": a["expert_id"]},
             )
     assert "permission denied" in str(exc.value).lower()
+
+
+# ─── M3：对话表的权限边界 ────────────────────────────────────────────────
+async def test_agent_can_read_messages(seeded):
+    """M6 要用历史对话做评测调优，所以给了 SELECT。"""
+    a = seeded["a"]
+    async with tenant_conn(a["tenant_id"]) as conn:
+        await conn.execute(text("SELECT id FROM messages LIMIT 1"))
+
+
+async def test_agent_cannot_write_messages(seeded):
+    """落库是 backend 的事 —— agent 只在 SSE 的 done 事件里回传元数据。"""
+    a = seeded["a"]
+    with pytest.raises((ProgrammingError, DBAPIError)) as exc:
+        async with tenant_conn(a["tenant_id"]) as conn:
+            await conn.execute(text(
+                "INSERT INTO messages (tenant_id, conversation_id, role, content) "
+                "VALUES (:t, gen_random_uuid(), 'assistant', 'x')"), {"t": a["tenant_id"]})
+    assert "permission denied" in str(exc.value).lower()
+
+
+async def test_agent_cannot_touch_conversations(seeded):
+    """会话归属是业务，不是内容处理。这张表 agent 一点权限都没有。"""
+    a = seeded["a"]
+    with pytest.raises((ProgrammingError, DBAPIError)) as exc:
+        async with tenant_conn(a["tenant_id"]) as conn:
+            await conn.execute(text("SELECT id FROM conversations LIMIT 1"))
+    assert "permission denied" in str(exc.value).lower()

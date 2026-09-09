@@ -211,6 +211,13 @@ export function createApp() {
     c.json(ok(await expertSvc.listMaterials(c.get("auth").tenantId, c.req.valid("param").id))),
   );
 
+  // ── M3 粉丝对话：契约已冻结，实现见 specs/004-m3-chat/tasks.md U4 ──
+  const notImplemented = (): never => {
+    throw new HTTPException(501, { message: "尚未实现（M3 实现中）" });
+  };
+  app.openapi(R.getChatExpertRoute, notImplemented);
+  app.openapi(R.chatRoute, notImplemented);
+
   // ── M2 七维 ──
   app.openapi(R.getModelRoute, async (c) =>
     c.json(ok(await modelSvc.getModel(c.get("auth").tenantId, c.req.valid("param").id))),

@@ -103,6 +103,35 @@ class BuildAccepted(BaseModel):
     job_id: UUID
 
 
+class ChatRequest(BaseModel):
+    """
+    tenant_id 由 backend 从分享短链反查得出，绝不来自客户端。
+    agent 侧仍会用 experts 表再核对一次（纵深防御）。
+    """
+
+    expert_id: UUID
+    tenant_id: UUID
+    question: str
+
+
+@app.post(
+    "/internal/chat",
+    tags=["chat"],
+    summary="召回 + 双闸门 + 流式生成（SSE）",
+    description=(
+        "以 text/event-stream 返回，协议见 contracts/README.md。\n\n"
+        "入口闸门：rerank 分数低于阈值的召回结果全部丢弃；一条不剩时直接返回"
+        "「这个他没有讲过」，不调用生成模型。\n\n"
+        "出口闸门：流式下做不到边流边审，所以先流给用户、同时缓冲全文，"
+        "流结束后校验一次禁区，命中则追加免责说明。"
+    ),
+    responses={200: {"content": {"text/event-stream": {}}}},
+    dependencies=[Depends(require_internal_token)],
+)
+async def chat(req: ChatRequest):
+    raise HTTPException(status_code=501, detail="尚未实现（M3 实现中）")
+
+
 class ExtractModelRequest(BaseModel):
     expert_id: UUID
     tenant_id: UUID

@@ -34,6 +34,27 @@ expert_model_drafts = Table(
     Column("generated_at", TIMESTAMP(timezone=True), nullable=False, server_default=func.now()),
 )
 
+# 只读（GRANT SELECT）—— M6 用历史对话做评测与调优。
+# 写 messages 是 backend 的事：agent 只在 SSE 的 done 事件里回传元数据。
+# conversations 一点权限都没给 —— 会话归属是业务，不是内容处理。
+messages = Table(
+    "messages",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("conversation_id", UUID(as_uuid=True), nullable=False),
+    Column("role", Text, nullable=False),
+    Column("content", Text, nullable=False),
+    Column("chunk_ids", ARRAY(UUID(as_uuid=True)), nullable=False),
+    Column("confidence", Float),
+    Column("finish_reason", Text),
+    Column("safety", Text),
+    Column("prompt_tokens", Integer),
+    Column("completion_tokens", Integer),
+    Column("latency_ms", Integer),
+    Column("created_at", TIMESTAMP(timezone=True), nullable=False),
+)
+
 # 只读（GRANT SELECT）—— 构建时取原文。写素材是 backend 的事。
 materials = Table(
     "materials",
@@ -105,6 +126,7 @@ experts = Table(
     Column("status", Text, nullable=False),
     Column("price_cents", Integer, nullable=False),
     Column("share_slug", Text),
+    Column("free_trial_messages", Integer, nullable=False),
     Column("confirmed_dimensions", ARRAY(Text), nullable=False),
     Column("published_at", TIMESTAMP(timezone=True)),
     Column("created_at", TIMESTAMP(timezone=True), nullable=False),
@@ -112,4 +134,6 @@ experts = Table(
 )
 
 # 漂移测试用：Python 侧声称存在的表
-MIRRORED_TABLES = ("chunks", "build_jobs", "experts", "materials", "expert_model_drafts")
+MIRRORED_TABLES = (
+    "chunks", "build_jobs", "experts", "materials", "expert_model_drafts", "messages",
+)

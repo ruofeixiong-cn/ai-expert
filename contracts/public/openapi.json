@@ -607,6 +607,53 @@
           }
         ]
       },
+      "ChatExpertInfo": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "creatorNickname": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "knowledgeSize": {
+            "type": "integer"
+          },
+          "priceCents": {
+            "type": "integer"
+          },
+          "trialRemaining": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "creatorNickname",
+          "knowledgeSize",
+          "priceCents",
+          "trialRemaining"
+        ]
+      },
+      "ChatStream": {
+        "type": "string",
+        "description": "SSE 事件流，协议见 contracts/README.md"
+      },
+      "ChatInput": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "question"
+        ]
+      },
       "ModelItem": {
         "type": "object",
         "properties": {
@@ -1810,6 +1857,119 @@
           },
           "404": {
             "description": "资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/{slug}": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "按分享短链获取专家信息",
+        "description": "专家未上线时返回 404 —— 不泄露这个短链是否存在过。",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 32
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "专家信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "number",
+                      "description": "0 = 成功；非 0 见 contracts/README.md",
+                      "example": 0
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ChatExpertInfo"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "短链无效或专家未上线",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "向 AI 专家提问（SSE 流式返回）",
+        "description": "以 text/event-stream 返回，事件协议见 contracts/README.md。\n\n召回结果全部低于置信度阈值时，直接回答「这个他没有讲过」，不调用生成模型 ——既防幻觉，也不为库里没有的问题花钱。\n\n试聊额度用完时发 `event: error` + `code: 402`，而不是断流。",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 32
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SSE 事件流",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatStream"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "短链无效或专家未上线",
             "content": {
               "application/json": {
                 "schema": {
