@@ -6,8 +6,12 @@ import { getDb } from "./db/client.js";
 import { envelope, ok } from "./schemas/common.js";
 import * as R from "./routes/definitions.js";
 import { requireAuth } from "./middleware/auth.js";
-import { AppError, Code } from "./core/errors.js";
+import { AppError, Code, unauthorized } from "./core/errors.js";
 import * as authSvc from "./services/auth.js";
+import * as sessionSvc from "./services/session.js";
+import {
+  setRefreshCookie, readRefreshCookie, clearRefreshCookie, clientMeta,
+} from "./core/cookies.js";
 
 /**
  * 契约已冻结、实现待补的接口先挂这个 handler。
@@ -79,6 +83,9 @@ export function createApp() {
 
   // ── 需要登录的路径 ──
   app.use("/api/me", requireAuth);
+  app.use("/api/auth/logout", requireAuth);
+  app.use("/api/auth/logout-all", requireAuth);
+  app.use("/api/auth/sessions", requireAuth);
   app.use("/api/experts", requireAuth);
   app.use("/api/experts/*", requireAuth);
 
@@ -95,8 +102,66 @@ export function createApp() {
   });
 
   // ── M1 接口：实现见 specs/002-m1-ingestion/tasks.md ──
-  app.openapi(R.registerRoute, async (c) => c.json(ok(await authSvc.register(c.req.valid("json")))));
-  app.openapi(R.loginRoute, async (c) => c.json(ok(await authSvc.login(c.req.valid("json")))));
+  app.openapi(R.registerRoute, async (c) => {
+    const r = await authSvc.register(c.req.valid("json"), clientMeta(c));
+    setRefreshCookie(c, r.tokens.refreshToken);
+    return c.json(
+      ok({
+        accessToken: r.tokens.accessToken,
+        expiresIn: r.tokens.accessExpiresIn,
+        user: r.user,
+        tenant: r.tenant,
+      }),
+    );
+  });
+
+  app.openapi(R.loginRoute, async (c) => {
+    const r = await authSvc.login(c.req.valid("json"), clientMeta(c));
+    setRefreshCookie(c, r.tokens.refreshToken);
+    return c.json(
+      ok({
+        accessToken: r.tokens.accessToken,
+        expiresIn: r.tokens.accessExpiresIn,
+        user: r.user,
+        tenant: r.tenant,
+      }),
+    );
+  });
+
+  app.openapi(R.refreshRoute, async (c) => {
+    // 只从 Cookie 读，不接受请求体传入 —— 否则 httpOnly 的保护就被绕开了
+    const presented = readRefreshCookie(c);
+    if (!presented) throw unauthorized("缺少刷新凭据，请重新登录");
+
+    let pair;
+    try {
+      pair = await sessionSvc.rotate(presented, clientMeta(c));
+    } catch (e) {
+      // 刷新失败（含重放导致的整族吊销）必须清掉 Cookie，
+      // 否则前端会拿着一个死 token 无限重试
+      clearRefreshCookie(c);
+      throw e;
+    }
+    setRefreshCookie(c, pair.refreshToken);
+    return c.json(ok({ accessToken: pair.accessToken, expiresIn: pair.accessExpiresIn }));
+  });
+
+  app.openapi(R.logoutRoute, async (c) => {
+    await sessionSvc.revokeSession(c.get("auth").sid, "logout");
+    clearRefreshCookie(c);
+    return c.json(ok({ revoked: 1 }));
+  });
+
+  app.openapi(R.logoutAllRoute, async (c) => {
+    const revoked = await sessionSvc.revokeAllSessions(c.get("auth").userId, "logout_all");
+    clearRefreshCookie(c);
+    return c.json(ok({ revoked }));
+  });
+
+  app.openapi(R.sessionsRoute, async (c) => {
+    const { userId, sid } = c.get("auth");
+    return c.json(ok(await sessionSvc.listSessions(userId, sid)));
+  });
   app.openapi(R.meRoute, async (c) => {
     const { userId, tenantId } = c.get("auth");
     return c.json(ok(await authSvc.me(userId, tenantId)));

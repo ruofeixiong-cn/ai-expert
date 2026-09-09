@@ -29,6 +29,13 @@
       "when": 1788950222051,
       "tag": "0003_materials_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788950587665,
+      "tag": "0004_auth_sessions",
+      "breakpoints": true
     }
   ]
 }

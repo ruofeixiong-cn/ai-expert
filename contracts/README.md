@@ -60,4 +60,32 @@ event: error   data: {"code":402,"message":"余额不足"}
 | 1404 | 资源不存在 | 404 页 |
 | 402 | credits 不足 | **弹充值**（HTTP 也用 402） |
 | 1429 | 触发限流 | 提示稍后再试 |
+| 1409 | 资源冲突（如邮箱已注册） | 表单标红 |
 | 5000 | 服务内部错误 | 通用错误提示 |
+
+---
+
+## 认证流程
+
+```
+登录/注册 ──▶ 响应体: { accessToken, expiresIn: 900 }
+              Set-Cookie: ae_rt=<refresh>; HttpOnly; Secure; SameSite=Strict; Path=/api/auth
+
+任何请求  ──▶ Authorization: Bearer <accessToken>
+
+收到 1401 ──▶ POST /api/auth/refresh（浏览器自动带 Cookie，无需前端传任何东西）
+              ├─ 200 → 拿到新 accessToken，重放原请求
+              └─ 401 → 清空本地状态，跳登录页
+```
+
+**前端必须遵守的三条**
+
+1. **accessToken 只存内存**（React state / 模块变量），不要进 `localStorage`。
+   它 15 分钟就过期，刷新页面重新 `POST /refresh` 拿一个即可。
+2. **refresh token 前端完全不接触** —— 它在 httpOnly Cookie 里，JS 读不到也不该读。
+   刷新请求带 `credentials: "include"` 即可。
+3. **并发请求收到 401 时要合并刷新**：多个请求同时 401 会触发多次 `/refresh`，
+   而每次刷新都会轮换 —— 后到的那次会拿着已作废的 token，被判定为重放，
+   **直接把用户踢下线**。必须用一个 in-flight Promise 把并发刷新合并成一次。
+
+> 第 3 条是最容易踩的坑：功能测试全过，一到真实页面（同时发好几个请求）就随机掉线。

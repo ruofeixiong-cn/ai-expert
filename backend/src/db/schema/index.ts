@@ -47,6 +47,70 @@ export const tenants = pgTable("tenants", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ── auth_sessions ────────────────────────────────────────────
+// 一次登录 = 一个会话族。refresh token 轮换时族不变，族被吊销则该设备全部失效。
+// 不做 RLS：认证发生在租户上下文之外（和 users / tenants 一样）。
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    // 冗余存一份：中间件校验会话时一次读取就能拿到租户，省一次 join
+    tenantId: uuid("tenant_id").notNull(),
+    userAgent: text("user_agent"),
+    ip: text("ip"),
+    // 会话的绝对上限。刷新只能延长 refresh token，不能突破这个时间 ——
+    // 否则一次登录可以靠不断刷新永久有效，等于没有过期。
+    absoluteExpiresAt: timestamp("absolute_expires_at", { withTimezone: true }).notNull(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    // 'logout' | 'logout_all' | 'reuse_detected' | 'expired'
+    revokedReason: text("revoked_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("auth_sessions_user_idx").on(t.userId)],
+);
+
+// ── refresh_tokens ───────────────────────────────────────────
+// 每次轮换插一行新的、把旧的标记 used_at。保留历史是【重放检测的前提】：
+// 已经用过的 token 再次出现，说明它被人复制走了 —— 此时吊销整个会话族。
+// 如果用 Redis + TTL，过期记录会消失，重放就退化成"未知 token"，
+// 只能拒绝这一次，无法发现"已经泄露了"。所以放 Postgres。
+export const refreshTokens = pgTable(
+  "refresh_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id").notNull().references(() => authSessions.id, { onDelete: "cascade" }),
+    // 只存 sha256。库泄露了也拿不到可用的 token。
+    // 用 sha256 而不是 argon2 是对的：慢哈希是为了对抗【低熵】口令的爆破，
+    // 而这里是 256 位随机串，没有可爆破性，慢哈希只会白白拖慢每次刷新。
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    // 非空 = 已被用于刷新过。再次出现即为重放。
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    replacedById: uuid("replaced_by_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("refresh_tokens_hash_key").on(t.tokenHash),
+    index("refresh_tokens_session_idx").on(t.sessionId),
+  ],
+);
+
+// ── login_attempts ───────────────────────────────────────────
+// 登录爆破节流。只在【失败】时写入，量很小。
+// M3 做全局限流时会整体挪到 Redis 令牌桶；现在为一个功能引 Redis 客户端不值。
+export const loginAttempts = pgTable(
+  "login_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // 'ip:1.2.3.4' 或 'account:a@b.com'，两个维度都限
+    key: text("key").notNull(),
+    attemptedAt: timestamp("attempted_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("login_attempts_key_time_idx").on(t.key, t.attemptedAt)],
+);
+
 // ── experts ──────────────────────────────────────────────────
 export const experts = pgTable(
   "experts",
@@ -163,4 +227,7 @@ export const buildJobs = pgTable(
   (t) => [index("build_jobs_expert_idx").on(t.expertId)],
 );
 
-export const schema = { users, tenants, experts, materials, chunks, buildJobs };
+export const schema = {
+  users, tenants, authSessions, refreshTokens, loginAttempts,
+  experts, materials, chunks, buildJobs,
+};

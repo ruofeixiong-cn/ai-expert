@@ -2,8 +2,11 @@ import { hash, verify } from "@node-rs/argon2";
 import { eq, or } from "drizzle-orm";
 import { systemTx } from "../db/client.js";
 import { users, tenants } from "../db/schema/index.js";
-import { signToken } from "../core/jwt.js";
 import { badRequest, conflict, unauthorized } from "../core/errors.js";
+import {
+  createSession, assertNotThrottled, recordLoginFailure, clearLoginFailures,
+  type ClientMeta, type TokenPair,
+} from "./session.js";
 import type { z } from "@hono/zod-openapi";
 import type { RegisterInput, LoginInput } from "../schemas/auth.js";
 
@@ -22,7 +25,7 @@ const shape = (u: typeof users.$inferSelect) => ({
  * 两条插入必须在【同一个事务】里 —— 建了用户没建租户的话，
  * 这个账号永远登录不了（JWT 需要 tenantId），且没有任何提示。
  */
-export async function register(input: z.infer<typeof RegisterInput>) {
+export async function register(input: z.infer<typeof RegisterInput>, meta: ClientMeta) {
   const { email = null, phone = null, password, nickname = null } = input;
 
   return systemTx(async (tx) => {
@@ -50,18 +53,24 @@ export async function register(input: z.infer<typeof RegisterInput>) {
       .returning();
     if (!tenant) throw badRequest("创建租户失败");
 
-    return {
-      token: await signToken({ userId: user.id, tenantId: tenant.id, role: "creator" }),
-      user: shape(user),
-      tenant: { id: tenant.id, name: tenant.name },
-    };
-  });
+    return { user: shape(user), tenant: { id: tenant.id, name: tenant.name } };
+  }).then(async (r) => ({
+    ...r,
+    tokens: await createSession(r.user.id, r.tenant.id, "creator", meta),
+  }));
 }
 
-export async function login(input: z.infer<typeof LoginInput>) {
+export async function login(
+  input: z.infer<typeof LoginInput>,
+  meta: ClientMeta,
+): Promise<{ user: ReturnType<typeof shape>; tenant: { id: string; name: string }; tokens: TokenPair }> {
   const { account, password } = input;
+  // 两个维度分别限：只限 IP 则攻击者换 IP 绕过；只限账号则可以拿一个密码
+  // 去撞一万个账号（credential stuffing）。
+  const throttleKeys = [`account:${account}`, ...(meta.ip ? [`ip:${meta.ip}`] : [])];
+  await assertNotThrottled(throttleKeys);
 
-  return systemTx(async (tx) => {
+  const identity = await systemTx(async (tx) => {
     const [user] = await tx
       .select()
       .from(users)
@@ -69,8 +78,12 @@ export async function login(input: z.infer<typeof LoginInput>) {
       .limit(1);
 
     // 账号不存在与密码错误返回同一个错误 —— 不泄露账号是否注册过
-    if (!user?.passwordHash) throw unauthorized("账号或密码不正确");
-    if (!(await verify(user.passwordHash, password))) throw unauthorized("账号或密码不正确");
+    const fail = async () => {
+      await recordLoginFailure(throttleKeys);
+      return unauthorized("账号或密码不正确");
+    };
+    if (!user?.passwordHash) throw await fail();
+    if (!(await verify(user.passwordHash, password))) throw await fail();
 
     const [tenant] = await tx
       .select()
@@ -80,15 +93,18 @@ export async function login(input: z.infer<typeof LoginInput>) {
     if (!tenant) throw unauthorized("账号缺少关联租户，请联系支持");
 
     return {
-      token: await signToken({
-        userId: user.id,
-        tenantId: tenant.id,
-        role: user.role === "creator" ? "creator" : "user",
-      }),
       user: shape(user),
       tenant: { id: tenant.id, name: tenant.name },
+      role: user.role === "creator" ? ("creator" as const) : ("user" as const),
     };
   });
+
+  await clearLoginFailures(throttleKeys);
+  return {
+    user: identity.user,
+    tenant: identity.tenant,
+    tokens: await createSession(identity.user.id, identity.tenant.id, identity.role, meta),
+  };
 }
 
 export async function me(userId: string, tenantId: string) {

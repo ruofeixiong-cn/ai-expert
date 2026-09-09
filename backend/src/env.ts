@@ -9,6 +9,7 @@ const Env = z.object({
   BACKEND_PORT: z.coerce.number().default(8787),
   // 生产环境必须覆盖。默认值只为让本地开箱即用。
   JWT_SECRET: z.string().min(16).default("dev_jwt_secret_change_me_in_prod"),
+  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 });
 
 export const env = Env.parse(process.env);

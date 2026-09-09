@@ -228,6 +228,266 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 用 refresh token 换新的 access token（并轮换 refresh token）
+         * @description refresh token 从 httpOnly Cookie 读取，不接受请求体传入。
+         *
+         *     每次刷新都会签发新的 refresh token 并作废旧的。若检测到已作废的 refresh token 被再次使用（重放），判定为凭据泄露并吊销【整个会话族】，返回 1401。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 刷新成功 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["RefreshResult"];
+                        };
+                    };
+                };
+                /** @description 未登录或 token 失效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description 资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性） */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 登出当前设备（吊销当前会话族） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 已登出 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["RevokeResult"];
+                        };
+                    };
+                };
+                /** @description 未登录或 token 失效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description 资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性） */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/logout-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 登出所有设备
+         * @description 改密码或发现异常登录时应调用。已签发的 access token 会在下次请求时被拒。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 已登出全部 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["RevokeResult"];
+                        };
+                    };
+                };
+                /** @description 未登录或 token 失效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description 资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性） */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 当前账号的活跃会话列表 */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 会话列表 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["SessionInfo"][];
+                        };
+                    };
+                };
+                /** @description 未登录或 token 失效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description 资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性） */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/me": {
         parameters: {
             query?: never;
@@ -693,8 +953,13 @@ export interface components {
             name: string;
         };
         AuthResult: {
-            /** @description JWT，放 Authorization: Bearer <token> */
-            token: string;
+            /** @description 放 Authorization: Bearer <token>，15 分钟有效 */
+            accessToken: string;
+            /**
+             * @description access token 剩余秒数
+             * @example 900
+             */
+            expiresIn: number;
             user: components["schemas"]["UserPublic"];
             tenant: components["schemas"]["TenantPublic"];
         };
@@ -717,6 +982,27 @@ export interface components {
             /** @description 邮箱或手机号 */
             account: string;
             password: string;
+        };
+        RefreshResult: {
+            accessToken: string;
+            /** @example 900 */
+            expiresIn: number;
+        };
+        RevokeResult: {
+            /** @description 被吊销的会话数 */
+            revoked: number;
+        };
+        SessionInfo: {
+            /** Format: uuid */
+            id: string;
+            userAgent: string | null;
+            ip: string | null;
+            /** @description 是否为当前这次登录 */
+            current: boolean;
+            /** Format: date-time */
+            lastUsedAt: string;
+            /** Format: date-time */
+            createdAt: string;
         };
         MeResult: {
             user: components["schemas"]["UserPublic"];

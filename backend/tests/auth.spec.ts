@@ -41,9 +41,10 @@ describe("认证", () => {
     expect(code).toBe(0);
     expect(data.user.role).toBe("creator");
     expect(data.tenant.id).toBeTruthy();
+    expect(data.accessToken).toBeTruthy();
 
     // token 里的 tenantId 必须就是刚建的租户 —— 否则后续所有 RLS 都会指向错的租户
-    const me = await get("/api/me", data.token);
+    const me = await get("/api/me", data.accessToken);
     const meBody = (await me.json()) as any;
     expect(meBody.data.tenant.id).toBe(data.tenant.id);
     expect(meBody.data.user.id).toBe(data.user.id);

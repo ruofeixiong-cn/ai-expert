@@ -1,6 +1,9 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { envelope, authedErrors, UuidParam } from "../schemas/common.js";
-import { RegisterInput, LoginInput, AuthResult, MeResult } from "../schemas/auth.js";
+import {
+  RegisterInput, LoginInput, AuthResult, MeResult,
+  RefreshResult, SessionInfo, RevokeResult,
+} from "../schemas/auth.js";
 import {
   Expert, ExpertDetail, CreateExpertInput, BuildResult,
 } from "../schemas/expert.js";
@@ -48,6 +51,39 @@ export const meRoute = createRoute({
   summary: "当前用户与租户",
   security: bearer,
   responses: { 200: json("当前身份", MeResult), ...authedErrors },
+});
+
+export const refreshRoute = createRoute({
+  method: "post", path: "/api/auth/refresh", tags: ["auth"],
+  summary: "用 refresh token 换新的 access token（并轮换 refresh token）",
+  description:
+    "refresh token 从 httpOnly Cookie 读取，不接受请求体传入。\n\n" +
+    "每次刷新都会签发新的 refresh token 并作废旧的。" +
+    "若检测到已作废的 refresh token 被再次使用（重放），" +
+    "判定为凭据泄露并吊销【整个会话族】，返回 1401。",
+  responses: { 200: json("刷新成功", RefreshResult), ...authedErrors },
+});
+
+export const logoutRoute = createRoute({
+  method: "post", path: "/api/auth/logout", tags: ["auth"],
+  summary: "登出当前设备（吊销当前会话族）",
+  security: bearer,
+  responses: { 200: json("已登出", RevokeResult), ...authedErrors },
+});
+
+export const logoutAllRoute = createRoute({
+  method: "post", path: "/api/auth/logout-all", tags: ["auth"],
+  summary: "登出所有设备",
+  description: "改密码或发现异常登录时应调用。已签发的 access token 会在下次请求时被拒。",
+  security: bearer,
+  responses: { 200: json("已登出全部", RevokeResult), ...authedErrors },
+});
+
+export const sessionsRoute = createRoute({
+  method: "get", path: "/api/auth/sessions", tags: ["auth"],
+  summary: "当前账号的活跃会话列表",
+  security: bearer,
+  responses: { 200: json("会话列表", z.array(SessionInfo)), ...authedErrors },
 });
 
 // ─── 专家 ────────────────────────────────────────────────────────────────────
