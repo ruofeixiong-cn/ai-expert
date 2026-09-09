@@ -1,11 +1,14 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
-# Docker Desktop for Mac 不一定把 CLI 链到 /usr/local/bin（那步要管理员密码）。
+# Docker Desktop for Mac 装在 "User" 模式时，CLI 在 ~/.docker/bin 且不在 PATH 里
+# （"System" 模式才装到 /usr/local/bin，但那要管理员密码）。
 # 注意：光用绝对路径不够 —— docker 还要调用同目录的 docker-credential-desktop，
 # 所以必须把整个目录加进 PATH。
 # （export PATH := 不行 —— GNU make 用它启动时的 PATH 直接 exec，不看变量。）
-DOCKER_BIN := $(shell command -v docker 2>/dev/null || echo /Applications/Docker.app/Contents/Resources/bin/docker)
+DOCKER_BIN := $(shell command -v docker 2>/dev/null \
+                || ls $(HOME)/.docker/bin/docker 2>/dev/null \
+                || echo /Applications/Docker.app/Contents/Resources/bin/docker)
 DOCKER_DIR := $(shell dirname $(DOCKER_BIN))
 DOCKER := PATH="$(DOCKER_DIR):$$PATH" docker
 .PHONY: help install up down migrate dev health contract contract-check test typecheck lint-db-access clean
