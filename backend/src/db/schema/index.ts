@@ -72,6 +72,38 @@ export const experts = pgTable(
   ],
 );
 
+// ── materials ────────────────────────────────────────────────
+// 博主上传的原始素材。Node 写，Python 只读（GRANT SELECT）。
+//
+// M1 不接 OSS：原文直接存 raw_text。storage_key 现在建好但留空，
+// 接 OSS 时只需填这个字段 + 把 raw_text 改成惰性加载，不用改表。
+//
+// 刻意【没有 status 列】：构建状态统一看 build_jobs，
+// 两处状态互相矛盾比没有状态更难排查。
+export const materials = pgTable(
+  "materials",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull(),
+    expertId: uuid("expert_id").notNull().references(() => experts.id, { onDelete: "cascade" }),
+    // 'paste'（粘贴正文，最可靠）| 'file'（上传文件）| 'url'（链接，只承诺公众号）
+    sourceType: text("source_type").notNull(),
+    sourceUrl: text("source_url"),
+    title: text("title"),
+    rawText: text("raw_text").notNull(),
+    // sha256(raw_text)，同一专家下唯一 —— 博主重复粘贴不会重复烧向量化的钱
+    contentHash: text("content_hash").notNull(),
+    // OSS 对象键，M1 恒为空
+    storageKey: text("storage_key"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("materials_tenant_expert_idx").on(t.tenantId, t.expertId),
+    // 去重在数据库层强制，不靠应用层记得查
+    uniqueIndex("materials_expert_hash_key").on(t.expertId, t.contentHash),
+  ],
+);
+
 // ── chunks ───────────────────────────────────────────────────
 // Python agent 唯一读写的核心表。
 export const chunks = pgTable(
@@ -80,6 +112,9 @@ export const chunks = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     tenantId: uuid("tenant_id").notNull(),
     expertId: uuid("expert_id").notNull().references(() => experts.id),
+    // 溯源：这条切片出自哪篇素材。M3 回答时要能说"出自哪篇文章"。
+    // 可空 —— 平台公共知识层（见 MVP 文档 §9.2）没有对应素材。
+    materialId: uuid("material_id").references(() => materials.id, { onDelete: "cascade" }),
     // 四路召回：'knowledge' | 'belief' | 'methodology' | 'decision' | 'example'
     channel: text("channel").notNull(),
     content: text("content").notNull(),
@@ -88,6 +123,10 @@ export const chunks = pgTable(
     // 拼 prompt 时显式标注来源，是防注入 4 条里的第 3 条
     source: text("source").notNull().default("creator"),
     confidence: doublePrecision("confidence"),
+    // 命中注入特征（"忽略以上指令"等）。标记而非删除 ——
+    // 博主可能就是在写"如何防范提示词注入"的正常文章。
+    // 降 confidence 让它进不了高置信度召回，但内容仍在。
+    injectionFlag: boolean("injection_flag").notNull().default(false),
     // 换 embedding 模型时，靠这两列识别哪些行要重算
     embeddingModel: text("embedding_model"),
     embeddingDim: integer("embedding_dim"),
@@ -99,6 +138,8 @@ export const chunks = pgTable(
     // 召回率 100%。单租户超过约 2 万 chunk 后再评估 HNSW。
     index("chunks_tenant_expert_channel_idx").on(t.tenantId, t.expertId, t.channel),
     index("chunks_content_hash_idx").on(t.contentHash),
+    // 重新构建某篇素材时要先删掉它已有的切片（原子重建）
+    index("chunks_material_idx").on(t.materialId),
   ],
 );
 
@@ -122,4 +163,4 @@ export const buildJobs = pgTable(
   (t) => [index("build_jobs_expert_idx").on(t.expertId)],
 );
 
-export const schema = { users, tenants, experts, chunks, buildJobs };
+export const schema = { users, tenants, experts, materials, chunks, buildJobs };

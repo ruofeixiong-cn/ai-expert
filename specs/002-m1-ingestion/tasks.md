@@ -10,11 +10,11 @@
 - [ ] S1.5 **人工过一遍接口清单**（接口设计是产品决策，值得停一下）
 
 ## S2 数据库（迁移 0002）
-- [ ] S2.1 `materials` 表 + RLS + FORCE + policy
-- [ ] S2.2 `chunks` 加 `material_id` / `injection_flag`
-- [ ] S2.3 `GRANT SELECT ON materials TO app_agent`（允许清单显式开口）
-- [ ] S2.4 同步 `agent/app/db/tables.py` 镜像
-- [ ] S2.5 漂移测试通过（B9）
+- [x] S2.1 `materials` 表 + RLS + FORCE + policy
+- [x] S2.2 `chunks` 加 `material_id` / `injection_flag`
+- [x] S2.3 `GRANT SELECT ON materials TO app_agent`（允许清单显式开口）
+- [x] S2.4 同步 `agent/app/db/tables.py` 镜像
+- [x] S2.5 漂移测试通过（B9）
 
 ## S3 backend：认证与租户
 - [ ] S3.1 `@node-rs/argon2` + `jose` 依赖

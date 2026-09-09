@@ -99,3 +99,30 @@ async def test_verified_conn_accepts_matching_tenant(seeded):
     async with verified_tenant_conn(a["expert_id"], a["tenant_id"]) as conn:
         rows = (await conn.execute(text("SELECT id FROM chunks"))).fetchall()
     assert len(rows) >= 1
+
+
+# ─── M1：materials 的权限边界（允许清单机制的实际验证）────────────────────
+async def test_agent_can_read_materials(seeded):
+    """构建时要取原文，所以给了 SELECT。"""
+    a = seeded["a"]
+    async with tenant_conn(a["tenant_id"]) as conn:
+        await conn.execute(text("SELECT id, raw_text FROM materials"))  # 不报错即可
+
+
+async def test_agent_cannot_write_materials(seeded):
+    """
+    素材由 backend 落库，agent 不该写。
+    0001 刻意没给 app_agent 默认授权，0003 只补了 SELECT ——
+    所以 INSERT 会被数据库直接拒绝，不依赖 Python 代码自觉。
+    """
+    a = seeded["a"]
+    with pytest.raises((ProgrammingError, DBAPIError)) as exc:
+        async with tenant_conn(a["tenant_id"]) as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO materials (tenant_id, expert_id, source_type, raw_text, content_hash) "
+                    "VALUES (:t, :e, 'paste', 'x', 'h')"
+                ),
+                {"t": a["tenant_id"], "e": a["expert_id"]},
+            )
+    assert "permission denied" in str(exc.value).lower()

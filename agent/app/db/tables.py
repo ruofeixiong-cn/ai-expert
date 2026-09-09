@@ -15,12 +15,29 @@ Node 侧 backend/src/db/schema/index.ts 的【手写镜像】。
 """
 
 from sqlalchemy import (
-    Column, Integer, MetaData, String, Table, Text, TIMESTAMP, Float, func,
+    Boolean, Column, Integer, MetaData, Table, Text, TIMESTAMP, Float, func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from pgvector.sqlalchemy import Vector
 
 metadata = MetaData()
+
+# 只读（GRANT SELECT）—— 构建时取原文。写素材是 backend 的事。
+materials = Table(
+    "materials",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("expert_id", UUID(as_uuid=True), nullable=False),
+    # paste / file / url
+    Column("source_type", Text, nullable=False),
+    Column("source_url", Text),
+    Column("title", Text),
+    Column("raw_text", Text, nullable=False),
+    Column("content_hash", Text, nullable=False),
+    Column("storage_key", Text),
+    Column("created_at", TIMESTAMP(timezone=True), nullable=False),
+)
 
 # 读写
 chunks = Table(
@@ -29,6 +46,8 @@ chunks = Table(
     Column("id", UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()),
     Column("tenant_id", UUID(as_uuid=True), nullable=False),
     Column("expert_id", UUID(as_uuid=True), nullable=False),
+    # 溯源：这条切片出自哪篇素材（可空 —— 平台公共知识层没有对应素材）
+    Column("material_id", UUID(as_uuid=True)),
     # 四路召回：knowledge / belief / methodology / decision / example
     Column("channel", Text, nullable=False),
     Column("content", Text, nullable=False),
@@ -36,6 +55,8 @@ chunks = Table(
     # creator / user_input / external / platform —— 防注入 4 条里的来源标记
     Column("source", Text, nullable=False, server_default="creator"),
     Column("confidence", Float),
+    # 命中注入特征。标记而非删除，靠降 confidence 挡在高置信度召回之外。
+    Column("injection_flag", Boolean, nullable=False, server_default="false"),
     Column("embedding_model", Text),
     Column("embedding_dim", Integer),
     Column("content_hash", Text),
@@ -74,4 +95,4 @@ experts = Table(
 )
 
 # 漂移测试用：Python 侧声称存在的表
-MIRRORED_TABLES = ("chunks", "build_jobs", "experts")
+MIRRORED_TABLES = ("chunks", "build_jobs", "experts", "materials")
