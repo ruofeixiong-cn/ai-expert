@@ -16,15 +16,15 @@
 - [x] T2.5 同步 Python 镜像 + 漂移测试
 
 ## T3 agent：七维提炼
-- [ ] T3.1 `pipeline/sample.py`：按素材均匀采样，字符预算内
-- [ ] T3.2 `pipeline/extract_model.py`：Pydantic AI + 短序号引用
-- [ ] T3.3 证据校验：编造的序号丢弃，条目降级为无证据（C3）
-- [ ] T3.4 Boundaries 平台三层默认模板（C4）
-- [ ] T3.5 Examples 无证据则丢弃（C5）
-- [ ] T3.6 接入 `run_build` 的 extracting 阶段
-- [ ] T3.7 `model` 类型任务 + `POST /internal/extract-model`
-- [ ] T3.8 失败保留旧草稿（C11）
-- [ ] T3.9 单测 C2 / C3 / C4 / C5 / C11
+- [x] T3.1 `pipeline/sample.py`：按素材均匀采样，字符预算内
+- [x] T3.2 `pipeline/extract_model.py`：Pydantic AI + 短序号引用
+- [x] T3.3 证据校验：编造的序号丢弃，条目降级为无证据（C3）
+- [x] T3.4 Boundaries 平台三层默认模板（C4）
+- [x] T3.5 Examples 无证据则丢弃（C5）
+- [x] T3.6 接入 `run_build` 的 extracting 阶段
+- [x] T3.7 `model` 类型任务 + `POST /internal/extract-model`
+- [x] T3.8 失败保留旧草稿（C11）
+- [x] T3.9 单测 C2 / C3 / C4 / C5 / C11
 
 ## T4 backend
 - [ ] T4.1 `GET /model`：草稿 + 定稿 + 已确认维度

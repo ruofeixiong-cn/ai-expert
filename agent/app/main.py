@@ -5,6 +5,8 @@ AI 专家平台 · agent 服务。
    对外唯一入口是 Node backend。
 """
 
+from __future__ import annotations
+
 from contextlib import asynccontextmanager
 from typing import Annotated, AsyncIterator, Literal
 from uuid import UUID
@@ -115,7 +117,43 @@ class ExtractModelRequest(BaseModel):
     dependencies=[Depends(require_internal_token)],
 )
 async def extract_model(req: ExtractModelRequest) -> "BuildAccepted":
-    raise HTTPException(status_code=501, detail="尚未实现（M2 实现中）")
+    return await _enqueue(req.expert_id, req.tenant_id, kind="model", fn="extract_model_job")
+
+
+async def _enqueue(
+    expert_id: UUID, tenant_id: UUID, *, kind: str, fn: str, extra: list | None = None
+) -> "BuildAccepted":
+    """建 job 行 + 入队。full 与 model 两种任务共用这段。"""
+    from uuid import uuid4
+
+    from arq import create_pool
+    from arq.connections import RedisSettings
+    from sqlalchemy import insert
+
+    from app.db.session import verified_tenant_conn
+    from app.db.tables import build_jobs
+
+    # backend 是可信内网调用方，但"可信"不等于"不会有 bug"。
+    # 这里再用 experts 表核对一次 expert 是否真属于该租户。
+    try:
+        async with verified_tenant_conn(expert_id, tenant_id) as conn:
+            job_id = uuid4()
+            await conn.execute(
+                insert(build_jobs).values(
+                    id=job_id, tenant_id=tenant_id, expert_id=expert_id,
+                    kind=kind, status="queued", progress=0, stage="queued",
+                )
+            )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    pool = await create_pool(RedisSettings.from_dsn(settings.REDIS_URL))
+    try:
+        await pool.enqueue_job(fn, str(expert_id), str(tenant_id), str(job_id), *(extra or []))
+    finally:
+        await pool.aclose()
+
+    return BuildAccepted(job_id=job_id)
 
 
 class BuildRequest(BaseModel):
@@ -147,46 +185,10 @@ class BuildAccepted(BaseModel):
     dependencies=[Depends(require_internal_token)],
 )
 async def build(req: BuildRequest) -> BuildAccepted:
-    from uuid import uuid4
-
-    from arq import create_pool
-    from arq.connections import RedisSettings
-    from sqlalchemy import insert
-
-    from app.db.session import verified_tenant_conn
-    from app.db.tables import build_jobs
-
-    # backend 是可信内网调用方，但"可信"不等于"不会有 bug"。
-    # 这里再用 experts 表核对一次 expert 是否真属于该租户。
-    try:
-        async with verified_tenant_conn(req.expert_id, req.tenant_id) as conn:
-            job_id = uuid4()
-            await conn.execute(
-                insert(build_jobs).values(
-                    id=job_id,
-                    tenant_id=req.tenant_id,
-                    expert_id=req.expert_id,
-                    status="queued",
-                    progress=0,
-                    stage="queued",
-                )
-            )
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-
-    pool = await create_pool(RedisSettings.from_dsn(settings.REDIS_URL))
-    try:
-        await pool.enqueue_job(
-            "build_expert",
-            str(req.expert_id),
-            str(req.tenant_id),
-            str(job_id),
-            [str(m) for m in req.material_ids] or None,
-        )
-    finally:
-        await pool.aclose()
-
-    return BuildAccepted(job_id=job_id)
+    return await _enqueue(
+        req.expert_id, req.tenant_id, kind="full", fn="build_expert",
+        extra=[[str(m) for m in req.material_ids] or None],
+    )
 
 
 @app.get("/internal/readyz", response_model=ReadyResponse, tags=["system"],

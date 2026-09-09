@@ -69,6 +69,7 @@ async def _chunks(tenant_id, expert_id):
 async def test_build_produces_chunks_with_correct_tenant(owner_engine, seeded, monkeypatch):
     """B4：素材 → chunks，且 tenant_id 全部正确。"""
     monkeypatch.setattr("app.config.settings.EMBEDDING_PROVIDER", "fake")
+    monkeypatch.setattr("app.config.settings.EXTRACT_PROVIDER", "fake")
     a = seeded["a"]
     expert = await _fresh_expert(owner_engine, a["tenant_id"], a["user_id"])
     await _add_material(owner_engine, a["tenant_id"], expert, ARTICLE)
@@ -92,6 +93,7 @@ async def test_build_produces_chunks_with_correct_tenant(owner_engine, seeded, m
 
 async def test_rebuild_replaces_chunks_instead_of_duplicating(owner_engine, seeded, monkeypatch):
     monkeypatch.setattr("app.config.settings.EMBEDDING_PROVIDER", "fake")
+    monkeypatch.setattr("app.config.settings.EXTRACT_PROVIDER", "fake")
     a = seeded["a"]
     expert = await _fresh_expert(owner_engine, a["tenant_id"], a["user_id"])
     await _add_material(owner_engine, a["tenant_id"], expert, ARTICLE, "重建测试")
@@ -110,6 +112,7 @@ async def test_injected_content_is_flagged_and_downweighted_not_deleted(
     owner_engine, seeded, monkeypatch
 ):
     monkeypatch.setattr("app.config.settings.EMBEDDING_PROVIDER", "fake")
+    monkeypatch.setattr("app.config.settings.EXTRACT_PROVIDER", "fake")
     a = seeded["a"]
     poisoned = (
         "# 投毒测试\n\n正常的理财知识内容，讲的是长期持有的价值和复利效应。\n\n"
@@ -139,6 +142,7 @@ async def test_embedding_failure_leaves_no_partial_chunks(owner_engine, seeded, 
     边算边写的话，供应商在第 300 条报错就会留下 299 条半截数据。
     """
     monkeypatch.setattr("app.config.settings.EMBEDDING_PROVIDER", "fake")
+    monkeypatch.setattr("app.config.settings.EXTRACT_PROVIDER", "fake")
     a = seeded["b"]
     expert = await _fresh_expert(owner_engine, a["tenant_id"], a["user_id"])
     await _add_material(owner_engine, a["tenant_id"], expert, ARTICLE, "失败测试")

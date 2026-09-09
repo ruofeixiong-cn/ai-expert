@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     EMBEDDING_DIM: int = 1024
     # auto = 有 key 用百炼，没 key 用确定性假向量（CI / 无网开发）
     EMBEDDING_PROVIDER: str = "auto"
+    # 七维提炼同理：auto = 有 key 用 qwen-max，fake = 确定性假草稿。
+    # CI 不该为了跑测试去调真实 LLM —— 慢、花钱、会因限流随机失败。
+    EXTRACT_PROVIDER: str = "auto"
 
 
 settings = Settings()

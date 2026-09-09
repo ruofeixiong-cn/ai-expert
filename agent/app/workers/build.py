@@ -10,15 +10,18 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.config import settings
 from app.db.session import tenant_conn
-from app.db.tables import build_jobs, chunks, materials
+from app.db.tables import build_jobs, chunks, expert_model_drafts, experts, materials
 from app.pipeline.chunk import split
 from app.pipeline.clean import detect_injection, sanitize
 from app.pipeline.config import MAX_CHUNKS_PER_BUILD
 from app.pipeline.embed import get_provider
+from app.pipeline.extract_model import ExtractionError, extract
+from app.pipeline.sample import pick
 
 log = logging.getLogger(__name__)
 
@@ -43,7 +46,7 @@ async def _progress(
         await conn.execute(
             update(build_jobs)
             .where(build_jobs.c.id == job_id)
-            .values(status=status, progress=progress, stage=stage, error=error, updated_at=__import__("sqlalchemy").func.now())
+            .values(status=status, progress=progress, stage=stage, error=error, updated_at=func.now())
         )
 
 
@@ -125,6 +128,9 @@ async def run_build(
                 ],
             )
 
+        # ── 5. 提炼七维（M2）──
+        await _run_extraction(expert_id, tenant_id, job_id)
+
         await _progress(tenant_id, job_id, status="succeeded", progress=100, stage="done")
         return len(pending)
 
@@ -142,6 +148,79 @@ async def run_build(
         raise
 
 
+async def _run_extraction(expert_id: UUID, tenant_id: UUID, job_id: UUID) -> int:
+    """
+    提炼七维草稿。返回采样到的切片数。
+
+    ⚠️ 失败时【不清空已有草稿】（C11）：博主可能已经基于旧草稿确认了几个维度，
+       一次提炼失败就把它抹掉，等于惩罚用户。旧草稿留着，错误写进 job。
+    """
+    await _progress(tenant_id, job_id, status="running", progress=90, stage="extracting")
+
+    async with tenant_conn(tenant_id) as conn:
+        name = (
+            await conn.execute(select(experts.c.name).where(experts.c.id == expert_id))
+        ).scalar_one_or_none()
+        rows = (
+            await conn.execute(
+                select(chunks.c.id, chunks.c.material_id, chunks.c.content)
+                .where(chunks.c.expert_id == expert_id)
+                .order_by(chunks.c.created_at)
+            )
+        ).fetchall()
+
+    if name is None:
+        raise BuildError("专家不存在或不属于该租户。")
+
+    samples = pick([(r[0], r[1], r[2]) for r in rows])
+    try:
+        model = await extract(name, samples)
+    except ExtractionError as exc:
+        raise BuildError(str(exc)) from exc
+
+    # 整行替换：一个专家一份草稿。
+    # app_agent 只有 INSERT/UPDATE（没有 DELETE），所以用 upsert 而不是先删后插。
+    async with tenant_conn(tenant_id) as conn:
+        stmt = pg_insert(expert_model_drafts).values(
+            expert_id=expert_id, tenant_id=tenant_id, model=model,
+            chunk_count=len(samples), generated_at=func.now(),
+        )
+        await conn.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[expert_model_drafts.c.expert_id],
+                set_={
+                    "model": stmt.excluded.model,
+                    "chunk_count": stmt.excluded.chunk_count,
+                    "generated_at": func.now(),
+                },
+            )
+        )
+    return len(samples)
+
+
+async def run_extract_model(expert_id: UUID, tenant_id: UUID, job_id: UUID) -> int:
+    """
+    只重新提炼，不重新向量化（C10）。
+
+    博主会反复重新生成七维直到满意。每次都重跑 embedding 是真金白银 ——
+    切片没变，向量就没必要重算。
+    """
+    try:
+        n = await _run_extraction(expert_id, tenant_id, job_id)
+        await _progress(tenant_id, job_id, status="succeeded", progress=100, stage="done")
+        return n
+    except BuildError as exc:
+        await _progress(tenant_id, job_id, status="failed", progress=0, stage=None, error=str(exc))
+        raise
+    except Exception:
+        log.exception("提炼失败 expert=%s job=%s", expert_id, job_id)
+        await _progress(
+            tenant_id, job_id, status="failed", progress=0, stage=None,
+            error="提炼过程中出现意外错误，请重试或联系支持。",
+        )
+        raise
+
+
 # ─── ARQ 外壳 ──────────────────────────────────────────────────────────────
 
 async def build_expert(ctx: dict, expert_id: str, tenant_id: str, job_id: str,
@@ -152,10 +231,14 @@ async def build_expert(ctx: dict, expert_id: str, tenant_id: str, job_id: str,
     )
 
 
+async def extract_model_job(ctx: dict, expert_id: str, tenant_id: str, job_id: str) -> int:
+    return await run_extract_model(UUID(expert_id), UUID(tenant_id), UUID(job_id))
+
+
 class WorkerSettings:
     from arq.connections import RedisSettings
 
-    functions = [build_expert]
+    functions = [build_expert, extract_model_job]
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
     max_jobs = 4
     job_timeout = 900

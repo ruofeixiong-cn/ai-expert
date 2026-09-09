@@ -6,11 +6,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# 向量化用确定性假向量：E2E 验的是【跨服务链路】，不是向量质量。
-# 真实 API 会让测试变慢、花钱、并因限流随机失败。
-# 需要验真实向量时：REAL_EMBEDDING=1 make e2e
-export EMBEDDING_PROVIDER="${REAL_EMBEDDING:+auto}"
-export EMBEDDING_PROVIDER="${EMBEDDING_PROVIDER:-fake}"
+# 向量化与七维提炼都用确定性假实现：E2E 验的是【跨服务链路】，
+# 不是向量质量、也不是提炼质量。真实 LLM 会让测试变慢、花钱、并因限流随机失败。
+# 需要走真实模型时：REAL_LLM=1 make e2e
+_provider="${REAL_LLM:-}"
+export EMBEDDING_PROVIDER="${_provider:+auto}"; export EMBEDDING_PROVIDER="${EMBEDDING_PROVIDER:-fake}"
+export EXTRACT_PROVIDER="${_provider:+auto}";   export EXTRACT_PROVIDER="${EXTRACT_PROVIDER:-fake}"
 
 pids=()
 cleanup() {
@@ -19,7 +20,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "→ 启动 agent（EMBEDDING_PROVIDER=$EMBEDDING_PROVIDER）"
+echo "→ 启动 agent（embedding=$EMBEDDING_PROVIDER extract=$EXTRACT_PROVIDER）"
 (cd agent && uv run uvicorn app.main:app --port "${AGENT_PORT:-8000}" >/tmp/e2e-agent.log 2>&1) &
 pids+=($!)
 
