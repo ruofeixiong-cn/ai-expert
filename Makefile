@@ -11,10 +11,10 @@ DOCKER_BIN := $(shell command -v docker 2>/dev/null \
                 || echo /Applications/Docker.app/Contents/Resources/bin/docker)
 DOCKER_DIR := $(shell dirname $(DOCKER_BIN))
 DOCKER := PATH="$(DOCKER_DIR):$$PATH" docker
-.PHONY: help install up down migrate dev worker health contract contract-check test typecheck lint-db-access clean
+.PHONY: help install up down migrate dev worker health contract contract-check test e2e verify typecheck lint-db-access clean
 
 help: ## 显示所有命令
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 install: ## 安装三个服务的依赖
 	pnpm install
@@ -70,9 +70,14 @@ lint-db-access: ## 禁止在唯一入口之外裸开数据库连接
 	 if [ -n "$$bad" ]; then echo "✗ 只允许在 db/session.py 里开连接:"; echo "$$bad"; exit 1; fi
 	@echo "✓ 数据库访问入口唯一"
 
-test: lint-db-access ## 跑全部测试（需要 postgres 在跑）
+test: lint-db-access ## 跑单元与集成测试（需要 postgres 在跑）
 	pnpm --filter backend test
 	cd agent && uv run pytest -q
+
+e2e: ## 端到端测试（自动起 agent + worker；需要 make up 已执行）
+	./scripts/e2e.sh
+
+verify: test e2e contract-check typecheck ## 提交前全量验证
 
 clean: ## 清干净（含数据卷，会删数据）
 	$(DOCKER) compose down -v
