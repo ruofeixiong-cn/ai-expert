@@ -14,12 +14,12 @@
 - [x] U2.4 Python 镜像 + 漂移测试
 
 ## U3 agent：召回与双闸门
-- [ ] U3.1 `pipeline/retrieve.py`：pgvector 召回 + rerank
-- [ ] U3.2 入口闸门：阈值过滤；空结果直接返回，**不调模型**（D6）
-- [ ] U3.3 `pipeline/prompt.py`：常驻骨架 + 来源标记
-- [ ] U3.4 `pipeline/safety.py`：出口闸门规则
-- [ ] U3.5 `POST /internal/chat` 流式实现
-- [ ] U3.6 单测 D6 + 出口闸门
+- [x] U3.1 `pipeline/retrieve.py`：pgvector 召回 + rerank
+- [x] U3.2 入口闸门：阈值过滤；空结果直接返回，**不调模型**（D6）
+- [x] U3.3 `pipeline/prompt.py`：常驻骨架 + 来源标记
+- [x] U3.4 `pipeline/safety.py`：出口闸门规则
+- [x] U3.5 `POST /internal/chat` 流式实现
+- [x] U3.6 单测 D6 + 出口闸门
 
 ## U4 backend
 - [ ] U4.1 匿名粉丝身份（签名 Cookie）

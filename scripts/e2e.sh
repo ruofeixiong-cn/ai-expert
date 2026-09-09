@@ -12,6 +12,8 @@ cd "$(dirname "$0")/.."
 _provider="${REAL_LLM:-}"
 export EMBEDDING_PROVIDER="${_provider:+auto}"; export EMBEDDING_PROVIDER="${EMBEDDING_PROVIDER:-fake}"
 export EXTRACT_PROVIDER="${_provider:+auto}";   export EXTRACT_PROVIDER="${EXTRACT_PROVIDER:-fake}"
+export CHAT_PROVIDER="${_provider:+auto}";      export CHAT_PROVIDER="${CHAT_PROVIDER:-fake}"
+export RERANK_PROVIDER="${_provider:+auto}";    export RERANK_PROVIDER="${RERANK_PROVIDER:-fake}"
 
 pids=()
 cleanup() {
@@ -20,7 +22,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "→ 启动 agent（embedding=$EMBEDDING_PROVIDER extract=$EXTRACT_PROVIDER）"
+echo "→ 启动 agent（LLM 全部走 ${_provider:+真实模型}${_provider:-假实现}）"
 (cd agent && uv run uvicorn app.main:app --port "${AGENT_PORT:-8000}" >/tmp/e2e-agent.log 2>&1) &
 pids+=($!)
 

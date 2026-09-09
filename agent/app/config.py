@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     # 七维提炼同理：auto = 有 key 用 qwen-max，fake = 确定性假草稿。
     # CI 不该为了跑测试去调真实 LLM —— 慢、花钱、会因限流随机失败。
     EXTRACT_PROVIDER: str = "auto"
+    # 对话生成与重排序同理。三个开关分开，是因为它们可以独立切换：
+    # 比如调 prompt 时想用真模型生成，但不想每次都重跑向量化。
+    CHAT_PROVIDER: str = "auto"
+    RERANK_PROVIDER: str = "auto"
 
 
 settings = Settings()

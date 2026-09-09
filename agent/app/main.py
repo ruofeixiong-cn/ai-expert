@@ -129,7 +129,33 @@ class ChatRequest(BaseModel):
     dependencies=[Depends(require_internal_token)],
 )
 async def chat(req: ChatRequest):
-    raise HTTPException(status_code=501, detail="尚未实现（M3 实现中）")
+    from fastapi.responses import StreamingResponse
+    from sqlalchemy import select
+
+    from app.db.session import verified_tenant_conn
+    from app.db.tables import experts
+    from app.pipeline.generate import chat_stream
+
+    # 纵深防御：backend 是可信内网调用方，但仍核对 expert 是否真属于该租户
+    try:
+        async with verified_tenant_conn(req.expert_id, req.tenant_id) as conn:
+            row = (
+                await conn.execute(
+                    select(experts.c.name, experts.c.expert_model, experts.c.status)
+                    .where(experts.c.id == req.expert_id)
+                )
+            ).one_or_none()
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    if row is None or row.status != "online" or not row.expert_model:
+        raise HTTPException(status_code=409, detail="这个专家还没有上线")
+
+    return StreamingResponse(
+        chat_stream(req.tenant_id, req.expert_id, row.name, row.expert_model, req.question),
+        media_type="text/event-stream",
+        headers={"cache-control": "no-cache", "x-accel-buffering": "no"},
+    )
 
 
 class ExtractModelRequest(BaseModel):
