@@ -33,15 +33,15 @@
 - [x] S4.6 测试 B3（跨租户返回 404）
 
 ## S5 agent：解析流水线
-- [ ] S5.1 `pipeline/config.py`：切分参数集中一处
-- [ ] S5.2 `pipeline/clean.py`：注入清洗 + 标记降权（B7）
-- [ ] S5.3 `pipeline/chunk.py`：标题感知切分 + 标题路径前缀（B5）
-- [ ] S5.4 `pipeline/embed.py`：`EmbeddingProvider` + DashScope/Fake 两实现
-- [ ] S5.5 `pipeline/parse.py`：trafilatura（链接）/ pymupdf / python-docx
-- [ ] S5.6 `workers/build.py`：ARQ 任务 + 分阶段进度 + 失败写回（B10）
-- [ ] S5.7 写 chunks 原子性（先删后插，同一事务）
-- [ ] S5.8 `POST /internal/build` 实现
-- [ ] S5.9 单测 B5 / B7 / B10
+- [x] S5.1 `pipeline/config.py`：切分参数集中一处
+- [x] S5.2 `pipeline/clean.py`：注入清洗 + 标记降权（B7）
+- [x] S5.3 `pipeline/chunk.py`：标题感知切分 + 标题路径前缀（B5）
+- [x] S5.4 `pipeline/embed.py`：`EmbeddingProvider` + DashScope/Fake 两实现
+- [x] S5.5 `pipeline/parse.py`：trafilatura（链接）/ pymupdf / python-docx
+- [x] S5.6 `workers/build.py`：ARQ 任务 + 分阶段进度 + 失败写回（B10）
+- [x] S5.7 写 chunks 原子性（先删后插，同一事务）
+- [x] S5.8 `POST /internal/build` 实现
+- [x] S5.9 单测 B5 / B7 / B10
 
 ## S6 frontend
 - [ ] S6.1 登录 / 注册页

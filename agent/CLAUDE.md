@@ -28,6 +28,17 @@
 `SET LOCAL x = :t` 是非法 SQL（SET 不接受绑定参数）；`SET`（不带 LOCAL）
 会把租户粘在连接上 → 跨租户泄露。
 
+## 向量化的两个 Provider
+
+`EMBEDDING_PROVIDER=auto`：有 `DASHSCOPE_API_KEY` 用百炼，没有则退回确定性假向量。
+测试一律 `monkeypatch` 成 `fake` —— CI 不该调真实 API（会 flaky、会花钱、会随机限流）。
+
+⚠️ **假向量没有语义**，余弦相似度只反映哈希碰撞。
+   M3 的检索质量测试必须用真 Provider，不能拿假向量测召回率然后以为没问题。
+
+实测校准数据（2026-09-09，text-embedding-v3）：
+相关句余弦 0.7544，无关句 0.2961。
+
 ## LLM 调用
 
 走百炼的 OpenAI 兼容端点 + 官方 `openai` SDK，包在 `app/llm/port.py` 后面。

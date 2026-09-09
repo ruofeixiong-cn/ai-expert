@@ -11,7 +11,7 @@ DOCKER_BIN := $(shell command -v docker 2>/dev/null \
                 || echo /Applications/Docker.app/Contents/Resources/bin/docker)
 DOCKER_DIR := $(shell dirname $(DOCKER_BIN))
 DOCKER := PATH="$(DOCKER_DIR):$$PATH" docker
-.PHONY: help install up down migrate dev health contract contract-check test typecheck lint-db-access clean
+.PHONY: help install up down migrate dev worker health contract contract-check test typecheck lint-db-access clean
 
 help: ## 显示所有命令
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -32,11 +32,15 @@ down: ## 停掉基础设施（保留数据卷）
 migrate: ## 跑数据库迁移（以 app_owner 身份）
 	pnpm --filter backend migrate
 
-dev: ## 同时起三个服务
+dev: ## 同时起三个服务 + 构建 worker
 	pnpm --filter backend dev & \
 	(cd agent && uv run uvicorn app.main:app --reload --port $${AGENT_PORT:-8000}) & \
+	(cd agent && uv run arq app.workers.build.WorkerSettings) & \
 	pnpm --filter frontend dev & \
 	wait
+
+worker: ## 只起构建 worker
+	cd agent && uv run arq app.workers.build.WorkerSettings
 
 health: ## 检查三个服务的健康端点
 	@echo "backend :" && curl -sS http://localhost:8787/health  | head -c 200 && echo

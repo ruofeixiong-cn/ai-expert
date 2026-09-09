@@ -11,7 +11,18 @@ class Settings(BaseSettings):
     # backend → agent 的内网共享密钥。agent 永不对公网开放。
     INTERNAL_TOKEN: str = "dev_internal_token_change_me"
     AGENT_PORT: int = 8000
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+    # ── 百炼 ──────────────────────────────────────────────
+    DASHSCOPE_API_KEY: str = ""
+    DASHSCOPE_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    MODEL_EMBEDDING: str = "text-embedding-v3"
+    MODEL_CHAT: str = "qwen-plus"
+    MODEL_EXTRACT: str = "qwen-max"
+    MODEL_RERANK: str = "gte-rerank-v2"
     EMBEDDING_DIM: int = 1024
+    # auto = 有 key 用百炼，没 key 用确定性假向量（CI / 无网开发）
+    EMBEDDING_PROVIDER: str = "auto"
 
 
 settings = Settings()

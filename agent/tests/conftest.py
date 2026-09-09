@@ -70,7 +70,10 @@ async def seeded(owner_engine):
                     {"t": tenant_id, "e": expert_id, "c": f"secret of {name}"},
                 )
             ).scalar_one()
-            out[key] = {"tenant_id": tenant_id, "expert_id": expert_id, "chunk_id": chunk_id}
+            out[key] = {
+                "tenant_id": tenant_id, "expert_id": expert_id,
+                "chunk_id": chunk_id, "user_id": user_id,
+            }
     return out
 
 
