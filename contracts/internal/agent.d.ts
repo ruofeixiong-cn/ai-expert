@@ -21,6 +21,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/build": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 入队构建任务，立即返回 job_id
+         * @description 进度写入 build_jobs 表，由 backend 读给前端轮询。任务失败时必须把 status 置为 failed 并写入可读的 error。
+         */
+        post: operations["build_internal_build_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/internal/readyz": {
         parameters: {
             query?: never;
@@ -42,6 +62,33 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** BuildAccepted */
+        BuildAccepted: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+        };
+        /**
+         * BuildRequest
+         * @description 由 backend 调用。tenant_id 虽然来自可信内网，agent 仍会用 experts 表核对
+         *     （见 db/session.py 的 verified_tenant_conn）—— 可信不等于不会有 bug。
+         */
+        BuildRequest: {
+            /**
+             * Expert Id
+             * Format: uuid
+             */
+            expert_id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
+            /** Material Ids */
+            material_ids?: string[];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -108,6 +155,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    build_internal_build_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-internal-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BuildRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

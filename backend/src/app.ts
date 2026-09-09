@@ -1,17 +1,18 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { HTTPException } from "hono/http-exception";
 import { sql } from "drizzle-orm";
 import { env } from "./env.js";
 import { getDb } from "./db/client.js";
+import { envelope, ok } from "./schemas/common.js";
+import * as R from "./routes/definitions.js";
 
-/** 统一响应体 {code, message, data} —— 见 MVP 产品文档 §15。 */
-const envelope = <T extends z.ZodTypeAny>(data: T) =>
-  z.object({
-    code: z.number().openapi({ example: 0, description: "0 = 成功；非 0 见 contracts/README.md" }),
-    message: z.string().openapi({ example: "ok" }),
-    data,
-  });
-
-const ok = <T>(data: T) => ({ code: 0, message: "ok", data });
+/**
+ * 契约已冻结、实现待补的接口先挂这个 handler。
+ * 返回 501 而不是假数据 —— 假数据会让前端以为接口能用。
+ */
+const notImplemented = (): never => {
+  throw new HTTPException(501, { message: "尚未实现（M1 实现中）" });
+};
 
 const HealthData = z
   .object({
@@ -71,6 +72,23 @@ export function createApp() {
       .catch(() => "down" as const);
 
     return c.json(ok({ database, agent }));
+  });
+
+  // ── M1 接口：契约已冻结，实现见 specs/002-m1-ingestion/tasks.md S3~S5 ──
+  app.openapi(R.registerRoute, notImplemented);
+  app.openapi(R.loginRoute, notImplemented);
+  app.openapi(R.meRoute, notImplemented);
+  app.openapi(R.createExpertRoute, notImplemented);
+  app.openapi(R.listExpertsRoute, notImplemented);
+  app.openapi(R.getExpertRoute, notImplemented);
+  app.openapi(R.createMaterialRoute, notImplemented);
+  app.openapi(R.listMaterialsRoute, notImplemented);
+  app.openapi(R.buildRoute, notImplemented);
+
+  app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
+    type: "http",
+    scheme: "bearer",
+    bearerFormat: "JWT",
   });
 
   app.doc31("/openapi.json", {

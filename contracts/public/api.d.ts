@@ -94,6 +94,574 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 注册博主（同时自动创建租户） */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RegisterInput"];
+                };
+            };
+            responses: {
+                /** @description 注册成功 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["AuthResult"];
+                        };
+                    };
+                };
+                /** @description 未登录或 token 失效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description 资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性） */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 登录 */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["LoginInput"];
+                };
+            };
+            responses: {
+                /** @description 登录成功 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["AuthResult"];
+                        };
+                    };
+                };
+                /** @description 未登录或 token 失效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description 资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性） */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 当前用户与租户 */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 当前身份 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["MeResult"];
+                        };
+                    };
+                };
+                /** @description 未登录或 token 失效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description 资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性） */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/experts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 我的专家列表 */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 列表 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["Expert"][];
+                        };
+                    };
+                };
+                /** @description 未登录或 token 失效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description 资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性） */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** 创建 AI 专家 */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateExpertInput"];
+                };
+            };
+            responses: {
+                /** @description 创建成功 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["Expert"];
+                        };
+                    };
+                };
+                /** @description 未登录或 token 失效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description 资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性） */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/experts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 专家详情（含最近一次构建进度）
+         * @description 不属于当前租户时返回 404 而非 403 —— 不泄露资源是否存在。
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 详情 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["ExpertDetail"];
+                        };
+                    };
+                };
+                /** @description 未登录或 token 失效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description 资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性） */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/experts/{id}/materials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 素材列表 */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 列表 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["Material"][];
+                        };
+                    };
+                };
+                /** @description 未登录或 token 失效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description 资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性） */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * 上传素材（粘贴正文 / 文件 / 链接）
+         * @description 链接抓取只承诺公众号，其他平台尽力而为；失败时前端应引导用户改用粘贴正文。内容哈希重复时复用已有素材，返回 deduplicated: true。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateMaterialInput"];
+                };
+            };
+            responses: {
+                /** @description 上传成功 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["CreateMaterialResult"];
+                        };
+                    };
+                };
+                /** @description 未登录或 token 失效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description 资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性） */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/experts/{id}/build": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 触发构建（解析 → 切分 → 向量化）
+         * @description 立即返回 jobId；进度通过 GET /api/experts/{id} 的 lastBuild 轮询。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 已入队 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["BuildResult"];
+                        };
+                    };
+                };
+                /** @description 未登录或 token 失效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description 资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性） */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -109,6 +677,132 @@ export interface components {
             database: "ok" | "down";
             /** @enum {string} */
             agent: "ok" | "down";
+        };
+        UserPublic: {
+            /** Format: uuid */
+            id: string;
+            email: string | null;
+            phone: string | null;
+            nickname: string | null;
+            /** @enum {string} */
+            role: "creator" | "user";
+        };
+        TenantPublic: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        AuthResult: {
+            /** @description JWT，放 Authorization: Bearer <token> */
+            token: string;
+            user: components["schemas"]["UserPublic"];
+            tenant: components["schemas"]["TenantPublic"];
+        };
+        ErrorBody: {
+            /** @example 1401 */
+            code: number;
+            /** @example 未登录 */
+            message: string;
+            data: null;
+        };
+        RegisterInput: {
+            /** Format: email */
+            email?: string;
+            phone?: string;
+            /** @description 至少 8 位 */
+            password: string;
+            nickname?: string;
+        };
+        LoginInput: {
+            /** @description 邮箱或手机号 */
+            account: string;
+            password: string;
+        };
+        MeResult: {
+            user: components["schemas"]["UserPublic"];
+            tenant: components["schemas"]["TenantPublic"];
+        };
+        /** @enum {string} */
+        ExpertStatus: "building" | "online" | "offline";
+        Expert: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            status: components["schemas"]["ExpertStatus"];
+            materialCount: number;
+            chunkCount: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CreateExpertInput: {
+            name: string;
+        };
+        /**
+         * @description 构建阶段，对应进度 0/20/40/70/100
+         * @enum {string|null}
+         */
+        BuildStage: "queued" | "parsing" | "chunking" | "embedding" | "done" | null;
+        BuildProgress: {
+            /** Format: uuid */
+            jobId: string;
+            /** @enum {string} */
+            status: "queued" | "running" | "succeeded" | "failed";
+            progress: number;
+            stage: components["schemas"]["BuildStage"];
+            /** @description 失败时的可读原因 */
+            error: string | null;
+            /** Format: date-time */
+            updatedAt: string;
+        } | null;
+        ExpertDetail: components["schemas"]["Expert"] & {
+            lastBuild: components["schemas"]["BuildProgress"];
+        };
+        /**
+         * @description paste=粘贴正文（最可靠）；file=上传文件；url=粘贴链接（只承诺公众号）
+         * @enum {string}
+         */
+        SourceType: "paste" | "file" | "url";
+        Material: {
+            /** Format: uuid */
+            id: string;
+            sourceType: components["schemas"]["SourceType"];
+            title: string | null;
+            sourceUrl: string | null;
+            charCount: number;
+            /** @description sha256，用于去重 */
+            contentHash: string;
+            chunkCount: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CreateMaterialResult: {
+            material: components["schemas"]["Material"];
+            /** @description true 表示内容哈希已存在，复用了已有素材而非新建 */
+            deduplicated: boolean;
+        };
+        CreateMaterialInput: {
+            /** @enum {string} */
+            sourceType: "paste";
+            title: string;
+            content: string;
+        } | {
+            /** @enum {string} */
+            sourceType: "file";
+            title: string;
+            filename: string;
+            contentBase64: string;
+        } | {
+            /** @enum {string} */
+            sourceType: "url";
+            /**
+             * Format: uri
+             * @example https://mp.weixin.qq.com/s/xxxx
+             */
+            url: string;
+        };
+        BuildResult: {
+            /** Format: uuid */
+            jobId: string;
         };
     };
     responses: never;

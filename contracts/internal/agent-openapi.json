@@ -27,6 +27,66 @@
         }
       }
     },
+    "/internal/build": {
+      "post": {
+        "tags": [
+          "build"
+        ],
+        "summary": "入队构建任务，立即返回 job_id",
+        "description": "进度写入 build_jobs 表，由 backend 读给前端轮询。任务失败时必须把 status 置为 failed 并写入可读的 error。",
+        "operationId": "build_internal_build_post",
+        "parameters": [
+          {
+            "name": "x-internal-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuildRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildAccepted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/internal/readyz": {
       "get": {
         "tags": [
@@ -79,6 +139,49 @@
   },
   "components": {
     "schemas": {
+      "BuildAccepted": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Job Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id"
+        ],
+        "title": "BuildAccepted"
+      },
+      "BuildRequest": {
+        "properties": {
+          "expert_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Expert Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tenant Id"
+          },
+          "material_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Material Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expert_id",
+          "tenant_id"
+        ],
+        "title": "BuildRequest",
+        "description": "由 backend 调用。tenant_id 虽然来自可信内网，agent 仍会用 experts 表核对\n（见 db/session.py 的 verified_tenant_conn）—— 可信不等于不会有 bug。"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
