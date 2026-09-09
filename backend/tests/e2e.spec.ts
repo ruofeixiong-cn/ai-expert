@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { eq } from "drizzle-orm";
 import { createApp } from "../src/app.js";
-import { closeDb } from "../src/db/client.js";
+import { closeDb, tenantTx } from "../src/db/client.js";
+import { chunks } from "../src/db/schema/index.js";
 
 /**
  * 跨服务端到端：backend → agent → ARQ worker → chunks → 回到 backend API。
@@ -42,7 +44,8 @@ async function creator() {
       password: "pass12345678",
     }),
   });
-  return (await json(res)).data.accessToken as string;
+  const d = (await json(res)).data;
+  return { token: d.accessToken as string, tenantId: d.tenant.id as string };
 }
 
 async function newExpert(token: string) {
@@ -82,7 +85,7 @@ afterAll(async () => { if (enabled) await closeDb(); });
 describe.skipIf(!enabled)("端到端：内容入库", () => {
   // B4 + B8
   it("上传长文 → 构建 → 产出带正确租户的知识切片，进度全程可读", async () => {
-    const token = await creator();
+    const { token } = await creator();
     const id = await newExpert(token);
 
     const up = (await json(await call(`/api/experts/${id}/materials`, {
@@ -116,7 +119,7 @@ describe.skipIf(!enabled)("端到端：内容入库", () => {
 
   // B6
   it("重复上传同一内容 + 重新构建，不产生重复切片", async () => {
-    const token = await creator();
+    const { token } = await creator();
     const id = await newExpert(token);
     const body = JSON.stringify({ sourceType: "paste", title: "指南", content: ARTICLE });
 
@@ -139,7 +142,7 @@ describe.skipIf(!enabled)("端到端：内容入库", () => {
 
   // B8 失败路径
   it("没有素材就构建 → 状态置 failed，错误信息对博主可读", async () => {
-    const token = await creator();
+    const { token } = await creator();
     const id = await newExpert(token);
 
     await call(`/api/experts/${id}/build`, { method: "POST", token });
@@ -154,16 +157,143 @@ describe.skipIf(!enabled)("端到端：内容入库", () => {
 
   // 隔离在完整链路里仍然成立
   it("另一个博主看不到、也构建不了这个专家", async () => {
-    const owner = await creator();
+    const { token: owner } = await creator();
     const id = await newExpert(owner);
     await call(`/api/experts/${id}/materials`, {
       method: "POST", token: owner,
       body: JSON.stringify({ sourceType: "paste", title: "私有", content: ARTICLE }),
     });
 
-    const other = await creator();
+    const { token: other } = await creator();
     expect((await call(`/api/experts/${id}`, { token: other })).status).toBe(404);
     expect((await call(`/api/experts/${id}/materials`, { token: other })).status).toBe(404);
     expect((await call(`/api/experts/${id}/build`, { method: "POST", token: other })).status).toBe(404);
   }, 60_000);
+});
+
+describe.skipIf(!enabled)("端到端：七维专家模型", () => {
+  async function buildExpert() {
+    const { token, tenantId } = await creator();
+    const id = await newExpert(token);
+    await call(`/api/experts/${id}/materials`, {
+      method: "POST", token,
+      body: JSON.stringify({ sourceType: "paste", title: "基金定投完整指南", content: ARTICLE }),
+    });
+    await call(`/api/experts/${id}/build`, { method: "POST", token });
+    const { detail } = await waitBuild(token, id);
+    expect(detail.lastBuild.status).toBe("succeeded");
+    return { token, tenantId, id, detail };
+  }
+
+  const model = async (token: string, id: string) =>
+    (await json(await call(`/api/experts/${id}/model`, { token }))).data;
+
+  // C1
+  it("构建完成后七个维度都在，且草稿与有效模型都可读", async () => {
+    const { token, id } = await buildExpert();
+    const m = await model(token, id);
+
+    const dims = ["persona", "knowledge", "beliefs", "methodology",
+                  "decisionRules", "boundaries", "examples"];
+    for (const d of dims) {
+      expect(Array.isArray(m.draft[d]), `draft.${d} 不是数组`).toBe(true);
+      expect(Array.isArray(m.confirmed[d]), `confirmed.${d} 不是数组`).toBe(true);
+    }
+    expect(m.chunkCount).toBeGreaterThan(0);
+    expect(m.generatedAt).not.toBeNull();
+    // C4：禁区恒为平台三层模板
+    expect(m.draft.boundaries).toHaveLength(3);
+    expect(m.draft.boundaries.map((b: any) => b.kind).sort()).toEqual(
+      ["impersonation", "out_of_scope", "professional_advice"],
+    );
+  }, 180_000);
+
+  // C2 —— 在真实数据上核对，而不是只看格式
+  it("所有证据 ID 都指向该专家真实存在的切片", async () => {
+    const { token, tenantId, id } = await buildExpert();
+    const m = await model(token, id);
+
+    const real = new Set(
+      (await tenantTx(tenantId, (tx) =>
+        tx.select({ id: chunks.id }).from(chunks).where(eq(chunks.expertId, id)),
+      )).map((r) => r.id),
+    );
+    expect(real.size).toBeGreaterThan(0);
+
+    let cited = 0;
+    for (const dim of ["persona", "knowledge", "beliefs", "methodology", "decisionRules", "examples"]) {
+      for (const it of m.draft[dim] as Array<{ evidenceChunkIds?: string[] }>) {
+        for (const ev of it.evidenceChunkIds ?? []) {
+          cited++;
+          expect(real.has(ev), `证据 ${ev} 不属于这个专家`).toBe(true);
+        }
+      }
+    }
+    expect(cited, "一条证据都没有，这个断言就没意义了").toBeGreaterThan(0);
+  }, 180_000);
+
+  // ★ C10：省钱条款
+  it("重新生成七维不重跑向量化 —— 切片与 embedding 原封不动", async () => {
+    const { token, tenantId, id } = await buildExpert();
+    const before = await model(token, id);
+
+    const snapshot = async () =>
+      (await tenantTx(tenantId, (tx) =>
+        tx.select({ id: chunks.id, createdAt: chunks.createdAt, embedding: chunks.embedding })
+          .from(chunks).where(eq(chunks.expertId, id)),
+      )).map((r) => `${r.id}|${r.createdAt.toISOString()}|${(r.embedding ?? []).slice(0, 4).join(",")}`)
+        .sort();
+
+    const chunksBefore = await snapshot();
+    expect(chunksBefore.length).toBeGreaterThan(0);
+
+    const res = await call(`/api/experts/${id}/model/regenerate`, { method: "POST", token });
+    expect(res.status).toBe(200);
+    await waitBuild(token, id);
+
+    const chunksAfter = await snapshot();
+    // 博主会反复重新生成直到满意。每次都重跑 embedding 是真金白银。
+    expect(chunksAfter).toEqual(chunksBefore);
+
+    const after = await model(token, id);
+    expect(after.generatedAt).not.toBe(before.generatedAt); // 草稿确实重新生成了
+  }, 240_000);
+
+  it("重新生成不影响博主已确认的维度", async () => {
+    const { token, id } = await buildExpert();
+    await call(`/api/experts/${id}/model/beliefs`, {
+      method: "PUT", token,
+      body: JSON.stringify({ items: [{ content: "我亲手改的立场", confidence: 1, evidenceChunkIds: [] }] }),
+    });
+
+    await call(`/api/experts/${id}/model/regenerate`, { method: "POST", token });
+    await waitBuild(token, id);
+
+    const m = await model(token, id);
+    // 草稿和确认是两份数据，重新生成只动草稿
+    expect(m.confirmed.beliefs[0].content).toBe("我亲手改的立场");
+    expect(m.confirmedDimensions).toContain("beliefs");
+  }, 240_000);
+
+  // C7 + C8 走完整链路
+  it("确认禁区后可以上线，拿到稳定的分享链接", async () => {
+    const { token, id } = await buildExpert();
+
+    const published = (await json(await call(`/api/experts/${id}/publish`, {
+      method: "POST", token,
+    }))).data;
+    expect(published.shareSlug).toMatch(/^[\w-]{10}$/);
+
+    const detail = (await json(await call(`/api/experts/${id}`, { token }))).data;
+    expect(detail.status).toBe("online");
+    expect(detail.shareSlug).toBe(published.shareSlug);
+
+    // 禁区被清空后不允许再上线
+    await call(`/api/experts/${id}/model/boundaries`, {
+      method: "PUT", token, body: JSON.stringify({ items: [] }),
+    });
+    const again = await call(`/api/experts/${id}/publish`, { method: "POST", token });
+    expect(again.status).toBe(400);
+    expect((await json(again)).message).toContain("边界");
+  }, 180_000);
 });
