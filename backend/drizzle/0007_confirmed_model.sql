@@ -1,0 +1,1 @@
+ALTER TABLE "experts" ADD COLUMN "confirmed_model" jsonb;

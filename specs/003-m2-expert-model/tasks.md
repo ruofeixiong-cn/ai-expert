@@ -27,11 +27,11 @@
 - [x] T3.9 单测 C2 / C3 / C4 / C5 / C11
 
 ## T4 backend
-- [ ] T4.1 `GET /model`：草稿 + 定稿 + 已确认维度
-- [ ] T4.2 `PUT /model/{dimension}`：分块确认（C6）
-- [ ] T4.3 `POST /model/regenerate`
-- [ ] T4.4 `POST /publish`：boundaries 校验 + share_slug（C7 / C8）
-- [ ] T4.5 测试 C6 / C7 / C8 / C9
+- [x] T4.1 `GET /model`：草稿 + 定稿 + 已确认维度
+- [x] T4.2 `PUT /model/{dimension}`：分块确认（C6）
+- [x] T4.3 `POST /model/regenerate`
+- [x] T4.4 `POST /publish`：boundaries 校验 + share_slug（C7 / C8）
+- [x] T4.5 测试 C6 / C7 / C8 / C9
 
 ## T5 frontend：分块确认页（本里程碑最值得打磨的界面）
 - [ ] T5.1 七维分块展示，按可靠度决定默认展开/折叠

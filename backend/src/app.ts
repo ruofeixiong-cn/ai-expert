@@ -10,6 +10,7 @@ import { AppError, Code, unauthorized } from "./core/errors.js";
 import * as authSvc from "./services/auth.js";
 import * as sessionSvc from "./services/session.js";
 import * as expertSvc from "./services/expert.js";
+import * as modelSvc from "./services/model.js";
 import {
   setRefreshCookie, readRefreshCookie, clearRefreshCookie, clientMeta,
 } from "./core/cookies.js";
@@ -210,14 +211,35 @@ export function createApp() {
     c.json(ok(await expertSvc.listMaterials(c.get("auth").tenantId, c.req.valid("param").id))),
   );
 
-  // ── M2 七维：契约已冻结，实现见 specs/003-m2-expert-model/tasks.md T4 ──
-  const notImplemented = (): never => {
-    throw new HTTPException(501, { message: "尚未实现（M2 实现中）" });
-  };
-  app.openapi(R.getModelRoute, notImplemented);
-  app.openapi(R.confirmDimensionRoute, notImplemented);
-  app.openapi(R.regenerateModelRoute, notImplemented);
-  app.openapi(R.publishRoute, notImplemented);
+  // ── M2 七维 ──
+  app.openapi(R.getModelRoute, async (c) =>
+    c.json(ok(await modelSvc.getModel(c.get("auth").tenantId, c.req.valid("param").id))),
+  );
+
+  app.openapi(R.confirmDimensionRoute, async (c) => {
+    const { id, dimension } = c.req.valid("param");
+    const { items } = c.req.valid("json");
+    return c.json(
+      ok(await modelSvc.confirmDimension(c.get("auth").tenantId, id, dimension, items)),
+    );
+  });
+
+  app.openapi(R.regenerateModelRoute, async (c) =>
+    c.json(ok(await modelSvc.regenerate(c.get("auth").tenantId, c.req.valid("param").id))),
+  );
+
+  app.openapi(R.publishRoute, async (c) => {
+    const url = new URL(c.req.url);
+    return c.json(
+      ok(
+        await modelSvc.publish(
+          c.get("auth").tenantId,
+          c.req.valid("param").id,
+          `${url.protocol}//${url.host}`,
+        ),
+      ),
+    );
+  });
 
   app.openapi(R.buildRoute, async (c) =>
     c.json(ok(await expertSvc.triggerBuild(c.get("auth").tenantId, c.req.valid("param").id))),

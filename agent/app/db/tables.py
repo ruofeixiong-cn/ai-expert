@@ -100,6 +100,7 @@ experts = Table(
     Column("tenant_id", UUID(as_uuid=True), nullable=False),
     Column("owner_id", UUID(as_uuid=True), nullable=False),
     Column("name", Text, nullable=False),
+    Column("confirmed_model", JSONB),
     Column("expert_model", JSONB),
     Column("status", Text, nullable=False),
     Column("price_cents", Integer, nullable=False),

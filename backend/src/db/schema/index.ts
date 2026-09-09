@@ -119,9 +119,20 @@ export const experts = pgTable(
     tenantId: uuid("tenant_id").notNull().references(() => tenants.id),
     ownerId: uuid("owner_id").notNull().references(() => users.id),
     name: text("name").notNull(),
-    // 七维专家模型。每个条目形如
-    //   { content, confidence, evidence_chunk_ids: [] }
-    // evidence_chunk_ids 为空 = AI 脑补，前端标红（防过度推断）。
+    // ── 专家模型的三个状态，刻意分开存 ──────────────────────
+    //
+    //   expert_model_drafts.model  「AI 说的」    agent 写
+    //   experts.confirmed_model    「博主认过的」 逐维度确认，博主写
+    //   experts.expert_model       「粉丝在用的」 上线时的快照
+    //
+    // 为什么不合并成一个字段：
+    //   合并的话，博主重新生成七维会【悄悄改变付费粉丝拿到的东西】。
+    //   上线即快照，之后怎么改草稿都不影响线上，直到他再次点上线。
+    //
+    // confirmed_model 是【部分】的：只含博主确认过的维度。
+    // 未确认的维度按草稿「默认通过」（产品文档 §8.4）。
+    confirmedModel: jsonb("confirmed_model"),
+    // 上线快照。未上线时为 null。M3 的对话只读这一个字段。
     expertModel: jsonb("expert_model"),
     // 'building' | 'online' | 'offline'
     status: text("status").notNull().default("building"),

@@ -31,6 +31,14 @@ export async function extract(
   return data;
 }
 
+export async function requestModelExtraction(
+  body: paths["/internal/extract-model"]["post"]["requestBody"]["content"]["application/json"],
+) {
+  const { data, error, response } = await client.POST("/internal/extract-model", { body });
+  if (error || !data) translate(response?.status ?? 502, (error as { detail?: unknown })?.detail);
+  return data;
+}
+
 export async function requestBuild(
   body: paths["/internal/build"]["post"]["requestBody"]["content"]["application/json"],
 ) {

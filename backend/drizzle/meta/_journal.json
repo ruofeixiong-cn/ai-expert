@@ -50,6 +50,13 @@
       "when": 1788965048338,
       "tag": "0006_expert_model_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788966019125,
+      "tag": "0007_confirmed_model",
+      "breakpoints": true
     }
   ]
 }

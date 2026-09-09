@@ -99,6 +99,10 @@ async def extract_content(req: ExtractRequest) -> ExtractResponse:
     )
 
 
+class BuildAccepted(BaseModel):
+    job_id: UUID
+
+
 class ExtractModelRequest(BaseModel):
     expert_id: UUID
     tenant_id: UUID
@@ -106,7 +110,7 @@ class ExtractModelRequest(BaseModel):
 
 @app.post(
     "/internal/extract-model",
-    response_model=None,
+    response_model=BuildAccepted,
     status_code=202,
     tags=["build"],
     summary="只重新提炼七维，不重新向量化",
@@ -116,13 +120,13 @@ class ExtractModelRequest(BaseModel):
     ),
     dependencies=[Depends(require_internal_token)],
 )
-async def extract_model(req: ExtractModelRequest) -> "BuildAccepted":
+async def extract_model(req: ExtractModelRequest) -> BuildAccepted:
     return await _enqueue(req.expert_id, req.tenant_id, kind="model", fn="extract_model_job")
 
 
 async def _enqueue(
     expert_id: UUID, tenant_id: UUID, *, kind: str, fn: str, extra: list | None = None
-) -> "BuildAccepted":
+) -> BuildAccepted:
     """建 job 行 + 入队。full 与 model 两种任务共用这段。"""
     from uuid import uuid4
 
@@ -166,10 +170,6 @@ class BuildRequest(BaseModel):
     tenant_id: UUID
     # 只构建这些素材；为空表示该专家名下全部未构建的素材
     material_ids: list[UUID] = Field(default_factory=list)
-
-
-class BuildAccepted(BaseModel):
-    job_id: UUID
 
 
 @app.post(
