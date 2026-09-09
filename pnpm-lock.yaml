@@ -35,6 +35,9 @@ importers:
       jose:
         specifier: ^6.2.12
         version: 6.2.12
+      openapi-fetch:
+        specifier: ^0.14.1
+        version: 0.14.1
       postgres:
         specifier: ^3.4.7
         version: 3.4.9

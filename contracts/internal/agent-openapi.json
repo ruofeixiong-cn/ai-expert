@@ -27,6 +27,66 @@
         }
       }
     },
+    "/internal/extract": {
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "把链接或文件提取成纯文本（同步）",
+        "description": "同步而非入队：抓不到链接、解析不了文件应该在博主点上传的那一刻就告诉他，让他改用粘贴正文。失败时返回 422 且 detail 是可直接展示给用户的中文原因。",
+        "operationId": "extract_content_internal_extract_post",
+        "parameters": [
+          {
+            "name": "x-internal-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Internal-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/internal/build": {
       "post": {
         "tags": [
@@ -181,6 +241,87 @@
         ],
         "title": "BuildRequest",
         "description": "由 backend 调用。tenant_id 虽然来自可信内网，agent 仍会用 experts 表核对\n（见 db/session.py 的 verified_tenant_conn）—— 可信不等于不会有 bug。"
+      },
+      "ExtractRequest": {
+        "properties": {
+          "source_type": {
+            "type": "string",
+            "enum": [
+              "file",
+              "url"
+            ],
+            "title": "Source Type"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "content_base64": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Base64"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_type"
+        ],
+        "title": "ExtractRequest",
+        "description": "paste 不走这里 —— 已经是文本了，backend 直接用，省一次网络往返。"
+      },
+      "ExtractResponse": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "char_count": {
+            "type": "integer",
+            "title": "Char Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "text",
+          "char_count"
+        ],
+        "title": "ExtractResponse"
       },
       "HTTPValidationError": {
         "properties": {

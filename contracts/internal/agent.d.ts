@@ -21,6 +21,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/extract": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 把链接或文件提取成纯文本（同步）
+         * @description 同步而非入队：抓不到链接、解析不了文件应该在博主点上传的那一刻就告诉他，让他改用粘贴正文。失败时返回 422 且 detail 是可直接展示给用户的中文原因。
+         */
+        post: operations["extract_content_internal_extract_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/internal/build": {
         parameters: {
             query?: never;
@@ -89,6 +109,32 @@ export interface components {
             /** Material Ids */
             material_ids?: string[];
         };
+        /**
+         * ExtractRequest
+         * @description paste 不走这里 —— 已经是文本了，backend 直接用，省一次网络往返。
+         */
+        ExtractRequest: {
+            /**
+             * Source Type
+             * @enum {string}
+             */
+            source_type: "file" | "url";
+            /** Url */
+            url?: string | null;
+            /** Filename */
+            filename?: string | null;
+            /** Content Base64 */
+            content_base64?: string | null;
+        };
+        /** ExtractResponse */
+        ExtractResponse: {
+            /** Title */
+            title: string | null;
+            /** Text */
+            text: string;
+            /** Char Count */
+            char_count: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -155,6 +201,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    extract_content_internal_extract_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-internal-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtractRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtractResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

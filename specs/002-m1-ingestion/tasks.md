@@ -24,12 +24,13 @@
 - [x] S3.5 测试 B1 / B2
 
 ## S4 backend：专家与素材
-- [ ] S4.1 专家 CRUD（建/列表/详情）
-- [ ] S4.2 素材上传：粘贴正文 + 文件 + 链接三种 `source_type`
-- [ ] S4.3 `content_hash` 去重（B6）+ 字数上限
-- [ ] S4.4 `POST /build` → 调 agent typed client（读 `contracts/internal/agent.d.ts`）
-- [ ] S4.5 `GET /api/experts/{id}` 带最近一次构建进度
-- [ ] S4.6 测试 B3（跨租户返回 404）
+- [x] S4.1 专家 CRUD（建/列表/详情）
+- [x] S4.2 素材上传：粘贴正文 + 文件 + 链接三种 `source_type`
+- [x] S4.3 `content_hash` 去重（B6）+ 字数上限
+- [x] S4.4 `POST /build` → 调 agent typed client（读 `contracts/internal/agent.d.ts`）
+- [x] S4.7 `POST /internal/extract`（新增）：url 抓取与 docx/pdf 解析，同步返回
+- [x] S4.5 `GET /api/experts/{id}` 带最近一次构建进度
+- [x] S4.6 测试 B3（跨租户返回 404）
 
 ## S5 agent：解析流水线
 - [ ] S5.1 `pipeline/config.py`：切分参数集中一处

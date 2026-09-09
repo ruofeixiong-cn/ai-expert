@@ -9,17 +9,10 @@ import { requireAuth } from "./middleware/auth.js";
 import { AppError, Code, unauthorized } from "./core/errors.js";
 import * as authSvc from "./services/auth.js";
 import * as sessionSvc from "./services/session.js";
+import * as expertSvc from "./services/expert.js";
 import {
   setRefreshCookie, readRefreshCookie, clearRefreshCookie, clientMeta,
 } from "./core/cookies.js";
-
-/**
- * 契约已冻结、实现待补的接口先挂这个 handler。
- * 返回 501 而不是假数据 —— 假数据会让前端以为接口能用。
- */
-const notImplemented = (): never => {
-  throw new HTTPException(501, { message: "尚未实现（M1 实现中）" });
-};
 
 const HealthData = z
   .object({
@@ -166,12 +159,38 @@ export function createApp() {
     const { userId, tenantId } = c.get("auth");
     return c.json(ok(await authSvc.me(userId, tenantId)));
   });
-  app.openapi(R.createExpertRoute, notImplemented);
-  app.openapi(R.listExpertsRoute, notImplemented);
-  app.openapi(R.getExpertRoute, notImplemented);
-  app.openapi(R.createMaterialRoute, notImplemented);
-  app.openapi(R.listMaterialsRoute, notImplemented);
-  app.openapi(R.buildRoute, notImplemented);
+  app.openapi(R.createExpertRoute, async (c) => {
+    const { tenantId, userId } = c.get("auth");
+    return c.json(ok(await expertSvc.createExpert(tenantId, userId, c.req.valid("json").name)));
+  });
+
+  app.openapi(R.listExpertsRoute, async (c) =>
+    c.json(ok(await expertSvc.listExperts(c.get("auth").tenantId))),
+  );
+
+  app.openapi(R.getExpertRoute, async (c) =>
+    c.json(ok(await expertSvc.getExpert(c.get("auth").tenantId, c.req.valid("param").id))),
+  );
+
+  app.openapi(R.createMaterialRoute, async (c) =>
+    c.json(
+      ok(
+        await expertSvc.createMaterial(
+          c.get("auth").tenantId,
+          c.req.valid("param").id,
+          c.req.valid("json"),
+        ),
+      ),
+    ),
+  );
+
+  app.openapi(R.listMaterialsRoute, async (c) =>
+    c.json(ok(await expertSvc.listMaterials(c.get("auth").tenantId, c.req.valid("param").id))),
+  );
+
+  app.openapi(R.buildRoute, async (c) =>
+    c.json(ok(await expertSvc.triggerBuild(c.get("auth").tenantId, c.req.valid("param").id))),
+  );
 
   app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
     type: "http",

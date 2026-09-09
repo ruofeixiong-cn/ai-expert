@@ -50,6 +50,53 @@ async def health() -> HealthResponse:
     return HealthResponse()
 
 
+class ExtractRequest(BaseModel):
+    """paste 不走这里 —— 已经是文本了，backend 直接用，省一次网络往返。"""
+
+    source_type: Literal["file", "url"]
+    url: str | None = None
+    filename: str | None = None
+    content_base64: str | None = None
+
+
+class ExtractResponse(BaseModel):
+    title: str | None
+    text: str
+    char_count: int
+
+
+@app.post(
+    "/internal/extract",
+    response_model=ExtractResponse,
+    tags=["ingest"],
+    summary="把链接或文件提取成纯文本（同步）",
+    description=(
+        "同步而非入队：抓不到链接、解析不了文件应该在博主点上传的那一刻就告诉他，"
+        "让他改用粘贴正文。失败时返回 422 且 detail 是可直接展示给用户的中文原因。"
+    ),
+    dependencies=[Depends(require_internal_token)],
+)
+async def extract_content(req: ExtractRequest) -> ExtractResponse:
+    from app.pipeline import extract as ex
+
+    try:
+        if req.source_type == "url":
+            if not req.url:
+                raise HTTPException(status_code=400, detail="缺少 url")
+            result = await ex.from_url(req.url)
+        else:
+            if not req.filename or not req.content_base64:
+                raise HTTPException(status_code=400, detail="缺少 filename 或 content_base64")
+            result = ex.from_file(req.filename, req.content_base64)
+    except ex.ExtractError as exc:
+        # 422 而不是 500：这不是服务故障，是这份素材提取不了，用户换个方式就行
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return ExtractResponse(
+        title=result.title, text=result.text, char_count=len(result.text)
+    )
+
+
 class BuildRequest(BaseModel):
     """
     由 backend 调用。tenant_id 虽然来自可信内网，agent 仍会用 experts 表核对
