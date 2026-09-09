@@ -10,3 +10,6 @@ __pycache__/
 coverage/
 .DS_Store
 *.log
+
+# 第三方版权材料：本地参考用，不入库
+docs/reference/*.pdf
