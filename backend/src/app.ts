@@ -55,7 +55,29 @@ const readyRoute = createRoute({
 });
 
 export function createApp() {
-  const app = new OpenAPIHono();
+  const app = new OpenAPIHono({
+    /**
+     * 参数校验失败的统一出口。
+     *
+     * 不加这个 hook 的话，@hono/zod-openapi 会直接吐出 zod 的原始错误对象
+     * `{success:false, error:{issues:[...]}}` —— 它不符合我们约定的
+     * {code, message, data} 信封，前端拿不到可读的 message，
+     * 只能显示"操作失败，请稍后重试"，用户根本不知道哪里填错了。
+     */
+    defaultHook: (result, c) => {
+      if (result.success) return;
+      const issue = result.error.issues[0];
+      const field = issue?.path.filter((p) => typeof p === "string").join(".");
+      return c.json(
+        {
+          code: Code.BAD_REQUEST,
+          message: field ? `${field}：${issue?.message}` : (issue?.message ?? "参数不合法"),
+          data: null,
+        },
+        400,
+      );
+    },
+  });
 
   app.openapi(healthRoute, (c) => c.json(ok({ service: "backend", status: "ok" as const })));
 

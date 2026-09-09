@@ -1,36 +1,71 @@
-import { useEffect, useState } from "react";
-import { api } from "./api/client";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { BrowserRouter, Navigate, Outlet, Route, Routes, Link } from "react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { LogOut } from "lucide-react";
+import { getAccessToken, logout, restoreSession, subscribe } from "@/lib/auth";
+import { Button, Spinner } from "@/components/ui";
+import LoginPage from "@/features/auth/LoginPage";
+import ExpertListPage from "@/features/experts/ExpertListPage";
+import ExpertDetailPage from "@/features/experts/ExpertDetailPage";
 
-/**
- * M0 的前端只做一件事：证明契约类型链路是通的。
- * 如果后端把 readyz 的字段改名而没跑 make contract，这个文件会编译失败。
- */
+const qc = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,            // 401 已由 api client 自动刷新重试，这里不必再叠
+      staleTime: 10_000,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
+
+const useAuthed = () => useSyncExternalStore(subscribe, () => getAccessToken() !== null);
+
+function Shell() {
+  return (
+    <div className="min-h-full">
+      <header className="border-b border-ink-200 bg-white">
+        <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
+          <Link to="/app" className="text-sm font-semibold">AI 专家平台</Link>
+          <Button variant="ghost" size="sm" onClick={() => void logout()}>
+            <LogOut className="size-4" /> 退出
+          </Button>
+        </div>
+      </header>
+      <Outlet />
+    </div>
+  );
+}
+
+function Protected() {
+  return useAuthed() ? <Shell /> : <Navigate to="/login" replace />;
+}
+
 export default function App() {
-  const [ready, setReady] = useState<{ database: string; agent: string } | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const authed = useAuthed();
+  const [booting, setBooting] = useState(true);
 
   useEffect(() => {
-    api
-      .GET("/readyz")
-      .then(({ data, error }) => {
-        if (error || !data) return setErr("后端不可达");
-        // data.data 的类型来自 contracts/public/api.d.ts，不是 any
-        setReady({ database: data.data.database, agent: data.data.agent });
-      })
-      .catch(() => setErr("后端不可达"));
+    // access token 只存内存，刷新页面就没了 ——
+    // 用 httpOnly Cookie 里的 refresh token 换一个回来，恢复登录态。
+    void restoreSession().finally(() => setBooting(false));
   }, []);
 
+  if (booting) {
+    return <div className="flex h-full items-center justify-center"><Spinner className="size-6" /></div>;
+  }
+
   return (
-    <main style={{ fontFamily: "system-ui", padding: 32, lineHeight: 1.8 }}>
-      <h1 style={{ fontSize: 20 }}>AI 专家平台 · M0</h1>
-      {err && <p style={{ color: "#c00" }}>{err}</p>}
-      {ready && (
-        <ul>
-          <li>database: {ready.database}</li>
-          <li>agent: {ready.agent}</li>
-        </ul>
-      )}
-      {!ready && !err && <p>检查依赖中…</p>}
-    </main>
+    <QueryClientProvider client={qc}>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={authed ? <Navigate to="/app" replace /> : <LoginPage />} />
+          <Route path="/app" element={<Protected />}>
+            <Route index element={<ExpertListPage />} />
+            <Route path="experts/:id" element={<ExpertDetailPage />} />
+          </Route>
+          <Route path="*" element={<Navigate to={authed ? "/app" : "/login"} replace />} />
+        </Routes>
+      </BrowserRouter>
+    </QueryClientProvider>
   );
 }

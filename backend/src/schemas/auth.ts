@@ -3,10 +3,10 @@ import { z } from "@hono/zod-openapi";
 export const RegisterInput = z
   .object({
     // 邮箱和手机号至少给一个
-    email: z.string().email().optional(),
-    phone: z.string().min(6).max(20).optional(),
-    password: z.string().min(8).max(72).openapi({ description: "至少 8 位" }),
-    nickname: z.string().min(1).max(40).optional(),
+    email: z.string().email("邮箱格式不正确").optional(),
+    phone: z.string().min(6, "手机号太短").max(20, "手机号太长").optional(),
+    password: z.string().min(8, "密码至少 8 位").max(72, "密码过长").openapi({ description: "至少 8 位" }),
+    nickname: z.string().min(1).max(40, "昵称最多 40 字").optional(),
   })
   .refine((v) => Boolean(v.email || v.phone), {
     message: "邮箱和手机号至少填一个",

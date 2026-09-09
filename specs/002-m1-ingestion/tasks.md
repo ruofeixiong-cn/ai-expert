@@ -44,11 +44,11 @@
 - [x] S5.9 单测 B5 / B7 / B10
 
 ## S6 frontend
-- [ ] S6.1 登录 / 注册页
-- [ ] S6.2 专家列表 + 新建专家
-- [ ] S6.3 素材上传（粘贴正文优先，文件与链接次之）
-- [ ] S6.4 构建进度条（TanStack Query 轮询）
-- [ ] S6.5 `tsc --noEmit` + `vite build`
+- [x] S6.1 登录 / 注册页
+- [x] S6.2 专家列表 + 新建专家
+- [x] S6.3 素材上传（粘贴正文优先，文件与链接次之）
+- [x] S6.4 构建进度条（TanStack Query 轮询）
+- [x] S6.5 `tsc --noEmit` + `vite build`
 
 ## S7 端到端
 - [ ] S7.1 B4：粘贴 3000 字 → chunks ≥ 5 且 tenant_id 全对

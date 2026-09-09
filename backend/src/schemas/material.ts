@@ -11,8 +11,8 @@ export const CreateMaterialInput = z
   .discriminatedUnion("sourceType", [
     z.object({
       sourceType: z.literal("paste"),
-      title: z.string().min(1).max(200),
-      content: z.string().min(1).max(MAX_MATERIAL_CHARS),
+      title: z.string().min(1, "标题不能为空").max(200, "标题最多 200 字"),
+      content: z.string().min(1, "正文不能为空").max(MAX_MATERIAL_CHARS, `正文最多 ${MAX_MATERIAL_CHARS} 字，请分批上传`),
     }),
     z.object({
       sourceType: z.literal("file"),
