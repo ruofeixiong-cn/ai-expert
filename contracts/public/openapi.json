@@ -1,0 +1,136 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AI 专家平台 · 公开 API",
+    "version": "0.0.1",
+    "description": "前端唯一的 API 面。agent 服务只在内网可达，不出现在这份契约里。"
+  },
+  "components": {
+    "schemas": {
+      "HealthData": {
+        "type": "object",
+        "properties": {
+          "service": {
+            "type": "string",
+            "example": "backend"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          }
+        },
+        "required": [
+          "service",
+          "status"
+        ]
+      },
+      "ReadyData": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "down"
+            ]
+          },
+          "agent": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "down"
+            ]
+          }
+        },
+        "required": [
+          "database",
+          "agent"
+        ]
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "存活探针（不触碰任何依赖）",
+        "responses": {
+          "200": {
+            "description": "服务存活",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "number",
+                      "description": "0 = 成功；非 0 见 contracts/README.md",
+                      "example": 0
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/HealthData"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "就绪探针（检查数据库与 agent 可达）",
+        "responses": {
+          "200": {
+            "description": "各依赖的状态；任一为 down 时 HTTP 仍为 200，由调用方判断",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "number",
+                      "description": "0 = 成功；非 0 见 contracts/README.md",
+                      "example": 0
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ReadyData"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "webhooks": {}
+}

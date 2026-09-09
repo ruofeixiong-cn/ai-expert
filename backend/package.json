@@ -1,0 +1,28 @@
+{
+  "name": "@ai-expert/backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "migrate": "drizzle-kit migrate",
+    "db:generate": "drizzle-kit generate",
+    "openapi:export": "tsx src/openapi.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.5",
+    "@hono/zod-openapi": "^0.19.10",
+    "drizzle-orm": "^0.44.6",
+    "hono": "^4.9.10",
+    "postgres": "^3.4.7",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.8",
+    "drizzle-kit": "^0.31.5",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
