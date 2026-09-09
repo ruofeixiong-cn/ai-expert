@@ -41,6 +41,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/extract-model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 只重新提炼七维，不重新向量化
+         * @description 复用已有的知识切片，只跑提炼。博主会反复重新生成直到满意，每次都重跑 embedding 是真金白银。
+         */
+        post: operations["extract_model_internal_extract_model_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/internal/build": {
         parameters: {
             query?: never;
@@ -108,6 +128,19 @@ export interface components {
             tenant_id: string;
             /** Material Ids */
             material_ids?: string[];
+        };
+        /** ExtractModelRequest */
+        ExtractModelRequest: {
+            /**
+             * Expert Id
+             * Format: uuid
+             */
+            expert_id: string;
+            /**
+             * Tenant Id
+             * Format: uuid
+             */
+            tenant_id: string;
         };
         /**
          * ExtractRequest
@@ -227,6 +260,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExtractResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extract_model_internal_extract_model_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-internal-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtractModelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

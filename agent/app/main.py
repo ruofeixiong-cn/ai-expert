@@ -97,6 +97,27 @@ async def extract_content(req: ExtractRequest) -> ExtractResponse:
     )
 
 
+class ExtractModelRequest(BaseModel):
+    expert_id: UUID
+    tenant_id: UUID
+
+
+@app.post(
+    "/internal/extract-model",
+    response_model=None,
+    status_code=202,
+    tags=["build"],
+    summary="只重新提炼七维，不重新向量化",
+    description=(
+        "复用已有的知识切片，只跑提炼。博主会反复重新生成直到满意，"
+        "每次都重跑 embedding 是真金白银。"
+    ),
+    dependencies=[Depends(require_internal_token)],
+)
+async def extract_model(req: ExtractModelRequest) -> "BuildAccepted":
+    raise HTTPException(status_code=501, detail="尚未实现（M2 实现中）")
+
+
 class BuildRequest(BaseModel):
     """
     由 backend 调用。tenant_id 虽然来自可信内网，agent 仍会用 experts 表核对

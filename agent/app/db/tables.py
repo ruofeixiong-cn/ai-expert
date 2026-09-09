@@ -17,10 +17,22 @@ Node 侧 backend/src/db/schema/index.ts 的【手写镜像】。
 from sqlalchemy import (
     Boolean, Column, Integer, MetaData, Table, Text, TIMESTAMP, Float, func,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from pgvector.sqlalchemy import Vector
 
 metadata = MetaData()
+
+# 读写（GRANT SELECT/INSERT/UPDATE，【没有 DELETE】）——
+# 七维草稿由 agent 提炼产出，只被下一次生成整行覆盖，不该被删。
+expert_model_drafts = Table(
+    "expert_model_drafts",
+    metadata,
+    Column("expert_id", UUID(as_uuid=True), primary_key=True),
+    Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    Column("model", JSONB, nullable=False),
+    Column("chunk_count", Integer, nullable=False, server_default="0"),
+    Column("generated_at", TIMESTAMP(timezone=True), nullable=False, server_default=func.now()),
+)
 
 # 只读（GRANT SELECT）—— 构建时取原文。写素材是 backend 的事。
 materials = Table(
@@ -70,6 +82,8 @@ build_jobs = Table(
     Column("id", UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()),
     Column("tenant_id", UUID(as_uuid=True), nullable=False),
     Column("expert_id", UUID(as_uuid=True), nullable=False),
+    # 'full' = 全流程；'model' = 只重新提炼七维，复用已有切片
+    Column("kind", Text, nullable=False, server_default="full"),
     Column("status", Text, nullable=False, server_default="queued"),
     Column("progress", Integer, nullable=False, server_default="0"),
     Column("stage", Text),
@@ -90,9 +104,11 @@ experts = Table(
     Column("status", Text, nullable=False),
     Column("price_cents", Integer, nullable=False),
     Column("share_slug", Text),
+    Column("confirmed_dimensions", ARRAY(Text), nullable=False),
+    Column("published_at", TIMESTAMP(timezone=True)),
     Column("created_at", TIMESTAMP(timezone=True), nullable=False),
     Column("updated_at", TIMESTAMP(timezone=True), nullable=False),
 )
 
 # 漂移测试用：Python 侧声称存在的表
-MIRRORED_TABLES = ("chunks", "build_jobs", "experts", "materials")
+MIRRORED_TABLES = ("chunks", "build_jobs", "experts", "materials", "expert_model_drafts")

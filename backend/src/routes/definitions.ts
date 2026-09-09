@@ -8,6 +8,9 @@ import {
   Expert, ExpertDetail, CreateExpertInput, BuildResult,
 } from "../schemas/expert.js";
 import { CreateMaterialInput, CreateMaterialResult, Material } from "../schemas/material.js";
+import {
+  Dimension, ModelView, ConfirmDimensionInput, PublishResult,
+} from "../schemas/model.js";
 
 /**
  * M1 的公开接口契约。
@@ -131,6 +134,59 @@ export const listMaterialsRoute = createRoute({
   security: bearer,
   request: { params: z.object({ id: UuidParam }) },
   responses: { 200: json("列表", z.array(Material)), ...authedErrors },
+});
+
+// ─── 专家模型（七维）─────────────────────────────────────────────────────────
+
+export const getModelRoute = createRoute({
+  method: "get", path: "/api/experts/{id}/model", tags: ["model"],
+  summary: "获取七维专家模型（AI 草稿 + 博主定稿）",
+  description:
+    "draft 是 AI 生成的草稿，confirmed 是博主确认过的定稿。\n\n" +
+    "条目的 evidenceChunkIds 为空表示【原文里找不到出处，是 AI 推断的】—— " +
+    "前端必须标红。这是防过度推断的核心机制，见产品文档 §8.3。",
+  security: bearer,
+  request: { params: z.object({ id: UuidParam }) },
+  responses: { 200: json("七维模型", ModelView), ...authedErrors },
+});
+
+export const confirmDimensionRoute = createRoute({
+  method: "put", path: "/api/experts/{id}/model/{dimension}", tags: ["model"],
+  summary: "确认单个维度（分块确认）",
+  description:
+    "一次只提交一个维度，对应产品文档 §8.4 的「分块确认」—— " +
+    "让博主一次看一块、改一块，而不是面对一个巨大的表单。\n\n" +
+    "提交即视为确认该维度；未提交的维度按草稿「默认通过」。",
+  security: bearer,
+  request: {
+    params: z.object({ id: UuidParam, dimension: Dimension }),
+    body: body(ConfirmDimensionInput),
+  },
+  responses: { 200: json("已确认", ModelView), ...authedErrors },
+});
+
+export const regenerateModelRoute = createRoute({
+  method: "post", path: "/api/experts/{id}/model/regenerate", tags: ["model"],
+  summary: "重新生成七维草稿（不重新向量化）",
+  description:
+    "只跑提炼，直接复用已有的知识切片。博主会反复重新生成直到满意，" +
+    "每次都重跑 embedding 是真金白银。\n\n" +
+    "已确认的维度不受影响 —— 草稿和定稿是分开存的。",
+  security: bearer,
+  request: { params: z.object({ id: UuidParam }) },
+  responses: { 200: json("已入队", BuildResult), ...authedErrors },
+});
+
+export const publishRoute = createRoute({
+  method: "post", path: "/api/experts/{id}/publish", tags: ["model"],
+  summary: "上线，生成分享链接",
+  description:
+    "上线前校验禁区（boundaries）非空 —— 它是合规生命线，" +
+    "必须由博主主动确认，见产品文档 §7.2。\n\n" +
+    "重复上线不会改变已生成的 share_slug。",
+  security: bearer,
+  request: { params: z.object({ id: UuidParam }) },
+  responses: { 200: json("已上线", PublishResult), ...authedErrors },
 });
 
 // ─── 构建 ────────────────────────────────────────────────────────────────────

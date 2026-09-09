@@ -854,6 +854,291 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/experts/{id}/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 获取七维专家模型（AI 草稿 + 博主定稿）
+         * @description draft 是 AI 生成的草稿，confirmed 是博主确认过的定稿。
+         *
+         *     条目的 evidenceChunkIds 为空表示【原文里找不到出处，是 AI 推断的】—— 前端必须标红。这是防过度推断的核心机制，见产品文档 §8.3。
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 七维模型 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["ModelView"];
+                        };
+                    };
+                };
+                /** @description 未登录或 token 失效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description 资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性） */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/experts/{id}/model/{dimension}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 确认单个维度（分块确认）
+         * @description 一次只提交一个维度，对应产品文档 §8.4 的「分块确认」—— 让博主一次看一块、改一块，而不是面对一个巨大的表单。
+         *
+         *     提交即视为确认该维度；未提交的维度按草稿「默认通过」。
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    dimension: components["schemas"]["Dimension"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ConfirmDimensionInput"];
+                };
+            };
+            responses: {
+                /** @description 已确认 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["ModelView"];
+                        };
+                    };
+                };
+                /** @description 未登录或 token 失效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description 资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性） */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/experts/{id}/model/regenerate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 重新生成七维草稿（不重新向量化）
+         * @description 只跑提炼，直接复用已有的知识切片。博主会反复重新生成直到满意，每次都重跑 embedding 是真金白银。
+         *
+         *     已确认的维度不受影响 —— 草稿和定稿是分开存的。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 已入队 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["BuildResult"];
+                        };
+                    };
+                };
+                /** @description 未登录或 token 失效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description 资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性） */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/experts/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 上线，生成分享链接
+         * @description 上线前校验禁区（boundaries）非空 —— 它是合规生命线，必须由博主主动确认，见产品文档 §7.2。
+         *
+         *     重复上线不会改变已生成的 share_slug。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 已上线 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["PublishResult"];
+                        };
+                    };
+                };
+                /** @description 未登录或 token 失效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description 资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性） */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/experts/{id}/build": {
         parameters: {
             query?: never;
@@ -1024,10 +1309,10 @@ export interface components {
             name: string;
         };
         /**
-         * @description 构建阶段，对应进度 0/20/40/70/100
+         * @description 构建阶段。extracting = 正在提炼七维专家模型。
          * @enum {string|null}
          */
-        BuildStage: "queued" | "parsing" | "chunking" | "embedding" | "done" | null;
+        BuildStage: "queued" | "parsing" | "chunking" | "embedding" | "extracting" | "done" | null;
         BuildProgress: {
             /** Format: uuid */
             jobId: string;
@@ -1042,6 +1327,13 @@ export interface components {
         } | null;
         ExpertDetail: components["schemas"]["Expert"] & {
             lastBuild: components["schemas"]["BuildProgress"];
+            /** @description 是否已有 AI 生成的七维草稿 */
+            hasDraft: boolean;
+            /** @description 博主已确认的维度 */
+            confirmedDimensions: string[];
+            shareSlug: string | null;
+            /** Format: date-time */
+            publishedAt: string | null;
         };
         /**
          * @description paste=粘贴正文（最可靠）；file=上传文件；url=粘贴链接（只承诺公众号）
@@ -1086,9 +1378,59 @@ export interface components {
              */
             url: string;
         };
+        ModelItem: {
+            content: string;
+            confidence: number;
+            /** @description 出自哪几个知识切片。为空 = AI 推断，原文无出处，前端标红。 */
+            evidenceChunkIds: string[];
+        };
+        /**
+         * @description 冒充风险 / 专业建议风险 / 立场越界 —— 产品文档 §7.2 的三层边界
+         * @enum {string}
+         */
+        BoundaryKind: "impersonation" | "professional_advice" | "out_of_scope";
+        BoundaryItem: {
+            content: string;
+            kind: components["schemas"]["BoundaryKind"];
+        };
+        ExampleItem: {
+            question: string;
+            answer: string;
+            evidenceChunkIds: string[];
+        };
+        ExpertModel: {
+            persona: components["schemas"]["ModelItem"][];
+            knowledge: components["schemas"]["ModelItem"][];
+            beliefs: components["schemas"]["ModelItem"][];
+            methodology: components["schemas"]["ModelItem"][];
+            decisionRules: components["schemas"]["ModelItem"][];
+            boundaries: components["schemas"]["BoundaryItem"][];
+            examples: components["schemas"]["ExampleItem"][];
+        } | null;
+        /** @enum {string} */
+        Dimension: "persona" | "knowledge" | "beliefs" | "methodology" | "decisionRules" | "boundaries" | "examples";
+        ModelView: {
+            draft: components["schemas"]["ExpertModel"];
+            /** Format: date-time */
+            generatedAt: string | null;
+            confirmed: components["schemas"]["ExpertModel"];
+            /** @description 博主已确认的维度。未确认的维度按草稿「默认通过」。 */
+            confirmedDimensions: components["schemas"]["Dimension"][];
+            chunkCount: number;
+        };
+        ConfirmDimensionInput: {
+            /** @description 该维度的最终内容。博主可增删改；提交即视为确认这一维度。 */
+            items: (components["schemas"]["ModelItem"] | components["schemas"]["BoundaryItem"] | components["schemas"]["ExampleItem"])[];
+        };
         BuildResult: {
             /** Format: uuid */
             jobId: string;
+        };
+        PublishResult: {
+            shareSlug: string;
+            shareUrl: string;
+            /** Format: date-time */
+            publishedAt: string;
         };
     };
     responses: never;

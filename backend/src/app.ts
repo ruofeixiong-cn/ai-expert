@@ -210,6 +210,15 @@ export function createApp() {
     c.json(ok(await expertSvc.listMaterials(c.get("auth").tenantId, c.req.valid("param").id))),
   );
 
+  // ── M2 七维：契约已冻结，实现见 specs/003-m2-expert-model/tasks.md T4 ──
+  const notImplemented = (): never => {
+    throw new HTTPException(501, { message: "尚未实现（M2 实现中）" });
+  };
+  app.openapi(R.getModelRoute, notImplemented);
+  app.openapi(R.confirmDimensionRoute, notImplemented);
+  app.openapi(R.regenerateModelRoute, notImplemented);
+  app.openapi(R.publishRoute, notImplemented);
+
   app.openapi(R.buildRoute, async (c) =>
     c.json(ok(await expertSvc.triggerBuild(c.get("auth").tenantId, c.req.valid("param").id))),
   );

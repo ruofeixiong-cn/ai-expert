@@ -84,8 +84,12 @@ export async function getExpert(tenantId: string, id: string) {
         name: experts.name,
         status: experts.status,
         createdAt: experts.createdAt,
+        shareSlug: experts.shareSlug,
+        publishedAt: experts.publishedAt,
+        confirmedDimensions: experts.confirmedDimensions,
         materialCount: sql<number>`(select count(*)::int from materials m where m.expert_id = experts.id)`,
         chunkCount: sql<number>`(select count(*)::int from chunks c where c.expert_id = experts.id)`,
+        hasDraft: sql<boolean>`exists (select 1 from expert_model_drafts d where d.expert_id = experts.id)`,
       })
       .from(experts)
       .where(eq(experts.id, id))
@@ -106,13 +110,17 @@ export async function getExpert(tenantId: string, id: string) {
       materialCount: row.materialCount,
       chunkCount: row.chunkCount,
       createdAt: row.createdAt.toISOString(),
+      hasDraft: row.hasDraft,
+      confirmedDimensions: row.confirmedDimensions ?? [],
+      shareSlug: row.shareSlug,
+      publishedAt: row.publishedAt?.toISOString() ?? null,
       lastBuild: job
         ? {
             jobId: job.id,
             status: job.status as "queued" | "running" | "succeeded" | "failed",
             progress: job.progress,
             stage: (job.stage ?? null) as
-              | "queued" | "parsing" | "chunking" | "embedding" | "done" | null,
+              | "queued" | "parsing" | "chunking" | "embedding" | "extracting" | "done" | null,
             error: job.error,
             updatedAt: job.updatedAt.toISOString(),
           }

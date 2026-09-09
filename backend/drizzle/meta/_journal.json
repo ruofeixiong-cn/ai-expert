@@ -36,6 +36,20 @@
       "when": 1788950587665,
       "tag": "0004_auth_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788965032948,
+      "tag": "0005_expert_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788965048338,
+      "tag": "0006_expert_model_rls",
+      "breakpoints": true
     }
   ]
 }

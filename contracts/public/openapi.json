@@ -354,9 +354,10 @@
           "parsing",
           "chunking",
           "embedding",
+          "extracting",
           "done"
         ],
-        "description": "构建阶段，对应进度 0/20/40/70/100"
+        "description": "构建阶段。extracting = 正在提炼七维专家模型。"
       },
       "BuildProgress": {
         "type": [
@@ -416,10 +417,38 @@
             "properties": {
               "lastBuild": {
                 "$ref": "#/components/schemas/BuildProgress"
+              },
+              "hasDraft": {
+                "type": "boolean",
+                "description": "是否已有 AI 生成的七维草稿"
+              },
+              "confirmedDimensions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "博主已确认的维度"
+              },
+              "shareSlug": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "publishedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
               }
             },
             "required": [
-              "lastBuild"
+              "lastBuild",
+              "hasDraft",
+              "confirmedDimensions",
+              "shareSlug",
+              "publishedAt"
             ]
           }
         ]
@@ -578,6 +607,215 @@
           }
         ]
       },
+      "ModelItem": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "minLength": 1
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "evidenceChunkIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "出自哪几个知识切片。为空 = AI 推断，原文无出处，前端标红。"
+          }
+        },
+        "required": [
+          "content",
+          "confidence",
+          "evidenceChunkIds"
+        ]
+      },
+      "BoundaryKind": {
+        "type": "string",
+        "enum": [
+          "impersonation",
+          "professional_advice",
+          "out_of_scope"
+        ],
+        "description": "冒充风险 / 专业建议风险 / 立场越界 —— 产品文档 §7.2 的三层边界"
+      },
+      "BoundaryItem": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "$ref": "#/components/schemas/BoundaryKind"
+          }
+        },
+        "required": [
+          "content",
+          "kind"
+        ]
+      },
+      "ExampleItem": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 1
+          },
+          "answer": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidenceChunkIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "question",
+          "answer",
+          "evidenceChunkIds"
+        ]
+      },
+      "ExpertModel": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "persona": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelItem"
+            }
+          },
+          "knowledge": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelItem"
+            }
+          },
+          "beliefs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelItem"
+            }
+          },
+          "methodology": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelItem"
+            }
+          },
+          "decisionRules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelItem"
+            }
+          },
+          "boundaries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BoundaryItem"
+            }
+          },
+          "examples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExampleItem"
+            }
+          }
+        },
+        "required": [
+          "persona",
+          "knowledge",
+          "beliefs",
+          "methodology",
+          "decisionRules",
+          "boundaries",
+          "examples"
+        ]
+      },
+      "Dimension": {
+        "type": "string",
+        "enum": [
+          "persona",
+          "knowledge",
+          "beliefs",
+          "methodology",
+          "decisionRules",
+          "boundaries",
+          "examples"
+        ]
+      },
+      "ModelView": {
+        "type": "object",
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/ExpertModel"
+          },
+          "generatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "confirmed": {
+            "$ref": "#/components/schemas/ExpertModel"
+          },
+          "confirmedDimensions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Dimension"
+            },
+            "description": "博主已确认的维度。未确认的维度按草稿「默认通过」。"
+          },
+          "chunkCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "draft",
+          "generatedAt",
+          "confirmed",
+          "confirmedDimensions",
+          "chunkCount"
+        ]
+      },
+      "ConfirmDimensionInput": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ModelItem"
+                },
+                {
+                  "$ref": "#/components/schemas/BoundaryItem"
+                },
+                {
+                  "$ref": "#/components/schemas/ExampleItem"
+                }
+              ]
+            },
+            "description": "该维度的最终内容。博主可增删改；提交即视为确认这一维度。"
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
       "BuildResult": {
         "type": "object",
         "properties": {
@@ -588,6 +826,26 @@
         },
         "required": [
           "jobId"
+        ]
+      },
+      "PublishResult": {
+        "type": "object",
+        "properties": {
+          "shareSlug": {
+            "type": "string"
+          },
+          "shareUrl": {
+            "type": "string"
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "shareSlug",
+          "shareUrl",
+          "publishedAt"
         ]
       }
     },
@@ -1476,6 +1734,332 @@
                       "items": {
                         "$ref": "#/components/schemas/Material"
                       }
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或 token 失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{id}/model": {
+      "get": {
+        "tags": [
+          "model"
+        ],
+        "summary": "获取七维专家模型（AI 草稿 + 博主定稿）",
+        "description": "draft 是 AI 生成的草稿，confirmed 是博主确认过的定稿。\n\n条目的 evidenceChunkIds 为空表示【原文里找不到出处，是 AI 推断的】—— 前端必须标红。这是防过度推断的核心机制，见产品文档 §8.3。",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "5f8c1d2e-3a4b-4c5d-9e6f-7a8b9c0d1e2f"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "七维模型",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "number",
+                      "description": "0 = 成功；非 0 见 contracts/README.md",
+                      "example": 0
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ModelView"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或 token 失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{id}/model/{dimension}": {
+      "put": {
+        "tags": [
+          "model"
+        ],
+        "summary": "确认单个维度（分块确认）",
+        "description": "一次只提交一个维度，对应产品文档 §8.4 的「分块确认」—— 让博主一次看一块、改一块，而不是面对一个巨大的表单。\n\n提交即视为确认该维度；未提交的维度按草稿「默认通过」。",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "5f8c1d2e-3a4b-4c5d-9e6f-7a8b9c0d1e2f"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "$ref": "#/components/schemas/Dimension"
+            },
+            "required": true,
+            "name": "dimension",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmDimensionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已确认",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "number",
+                      "description": "0 = 成功；非 0 见 contracts/README.md",
+                      "example": 0
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ModelView"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或 token 失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{id}/model/regenerate": {
+      "post": {
+        "tags": [
+          "model"
+        ],
+        "summary": "重新生成七维草稿（不重新向量化）",
+        "description": "只跑提炼，直接复用已有的知识切片。博主会反复重新生成直到满意，每次都重跑 embedding 是真金白银。\n\n已确认的维度不受影响 —— 草稿和定稿是分开存的。",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "5f8c1d2e-3a4b-4c5d-9e6f-7a8b9c0d1e2f"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "已入队",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "number",
+                      "description": "0 = 成功；非 0 见 contracts/README.md",
+                      "example": 0
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/BuildResult"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或 token 失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{id}/publish": {
+      "post": {
+        "tags": [
+          "model"
+        ],
+        "summary": "上线，生成分享链接",
+        "description": "上线前校验禁区（boundaries）非空 —— 它是合规生命线，必须由博主主动确认，见产品文档 §7.2。\n\n重复上线不会改变已生成的 share_slug。",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "5f8c1d2e-3a4b-4c5d-9e6f-7a8b9c0d1e2f"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "已上线",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "number",
+                      "description": "0 = 成功；非 0 见 contracts/README.md",
+                      "example": 0
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PublishResult"
                     }
                   },
                   "required": [

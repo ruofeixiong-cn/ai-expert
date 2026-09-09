@@ -127,6 +127,9 @@ export const experts = pgTable(
     status: text("status").notNull().default("building"),
     priceCents: integer("price_cents").notNull().default(0),
     shareSlug: text("share_slug"),
+    // 博主已确认的维度。未确认的按草稿「默认通过」（产品文档 §8.4）。
+    confirmedDimensions: text("confirmed_dimensions").array().notNull().default([]),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -134,6 +137,32 @@ export const experts = pgTable(
     uniqueIndex("experts_share_slug_key").on(t.shareSlug),
     index("experts_tenant_idx").on(t.tenantId),
   ],
+);
+
+// ── expert_model_drafts ──────────────────────────────────────
+// AI 生成的七维草稿。agent 写，backend 读。
+//
+// 为什么单独一张表，而不是往 experts.expert_model 里写：
+//   1) app_agent 只被 GRANT 了它需要的表。给它 experts 的 UPDATE 权限，
+//      等于打开"内容处理服务能改业务表"的口子
+//   2) 另一个做法是 agent 回调 backend，但那会让 agent → backend 也产生依赖，
+//      两个服务互相调，边界就糊了
+//   3) 产品语义本来就是两个状态：「AI 说的」和「博主认过的」。
+//      落成两张表比一个字段加 confirmed 布尔更清楚，
+//      也天然支持"重新生成不覆盖已确认内容"
+export const expertModelDrafts = pgTable(
+  "expert_model_drafts",
+  {
+    // 一个专家一份草稿，整行替换
+    expertId: uuid("expert_id").primaryKey().references(() => experts.id, { onDelete: "cascade" }),
+    tenantId: uuid("tenant_id").notNull(),
+    // 七维结构见 backend/src/schemas/model.ts 的 ExpertModel
+    model: jsonb("model").notNull(),
+    // 这份草稿基于多少个切片生成 —— 让博主知道 AI 读了多少内容
+    chunkCount: integer("chunk_count").notNull().default(0),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("expert_model_drafts_tenant_idx").on(t.tenantId)],
 );
 
 // ── materials ────────────────────────────────────────────────
@@ -216,6 +245,9 @@ export const buildJobs = pgTable(
     tenantId: uuid("tenant_id").notNull(),
     expertId: uuid("expert_id").notNull().references(() => experts.id),
     // 'queued' | 'running' | 'succeeded' | 'failed'
+    // 'full' = 解析→切分→向量化→提炼；'model' = 只重新提炼七维，
+    // 复用已有切片。博主会反复重新生成直到满意，每次重跑 embedding 是真金白银。
+    kind: text("kind").notNull().default("full"),
     status: text("status").notNull().default("queued"),
     // 0-100
     progress: integer("progress").notNull().default(0),
@@ -229,5 +261,5 @@ export const buildJobs = pgTable(
 
 export const schema = {
   users, tenants, authSessions, refreshTokens, loginAttempts,
-  experts, materials, chunks, buildJobs,
+  experts, expertModelDrafts, materials, chunks, buildJobs,
 };

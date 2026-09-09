@@ -3,8 +3,10 @@ import { z } from "@hono/zod-openapi";
 export const ExpertStatus = z.enum(["building", "online", "offline"]).openapi("ExpertStatus");
 
 export const BuildStage = z
-  .enum(["queued", "parsing", "chunking", "embedding", "done"])
-  .openapi("BuildStage", { description: "构建阶段，对应进度 0/20/40/70/100" });
+  .enum(["queued", "parsing", "chunking", "embedding", "extracting", "done"])
+  .openapi("BuildStage", {
+    description: "构建阶段。extracting = 正在提炼七维专家模型。",
+  });
 
 export const BuildProgress = z
   .object({
@@ -31,6 +33,10 @@ export const Expert = z
 export const ExpertDetail = Expert.extend({
   // 最近一次构建；从没构建过则为 null
   lastBuild: BuildProgress.nullable(),
+  hasDraft: z.boolean().openapi({ description: "是否已有 AI 生成的七维草稿" }),
+  confirmedDimensions: z.array(z.string()).openapi({ description: "博主已确认的维度" }),
+  shareSlug: z.string().nullable(),
+  publishedAt: z.string().datetime().nullable(),
 }).openapi("ExpertDetail");
 
 export const CreateExpertInput = z
