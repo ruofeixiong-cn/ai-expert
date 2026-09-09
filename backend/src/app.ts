@@ -5,6 +5,9 @@ import { env } from "./env.js";
 import { getDb } from "./db/client.js";
 import { envelope, ok } from "./schemas/common.js";
 import * as R from "./routes/definitions.js";
+import { requireAuth } from "./middleware/auth.js";
+import { AppError, Code } from "./core/errors.js";
+import * as authSvc from "./services/auth.js";
 
 /**
  * 契约已冻结、实现待补的接口先挂这个 handler。
@@ -74,10 +77,30 @@ export function createApp() {
     return c.json(ok({ database, agent }));
   });
 
-  // ── M1 接口：契约已冻结，实现见 specs/002-m1-ingestion/tasks.md S3~S5 ──
-  app.openapi(R.registerRoute, notImplemented);
-  app.openapi(R.loginRoute, notImplemented);
-  app.openapi(R.meRoute, notImplemented);
+  // ── 需要登录的路径 ──
+  app.use("/api/me", requireAuth);
+  app.use("/api/experts", requireAuth);
+  app.use("/api/experts/*", requireAuth);
+
+  // ── 统一错误响应 {code, message, data:null} ──
+  app.onError((err, c) => {
+    if (err instanceof AppError) {
+      return c.json({ code: err.appCode, message: err.message, data: null }, err.status);
+    }
+    if (err instanceof HTTPException) {
+      return c.json({ code: err.status, message: err.message, data: null }, err.status);
+    }
+    console.error("[unhandled]", err);
+    return c.json({ code: Code.INTERNAL, message: "服务内部错误", data: null }, 500);
+  });
+
+  // ── M1 接口：实现见 specs/002-m1-ingestion/tasks.md ──
+  app.openapi(R.registerRoute, async (c) => c.json(ok(await authSvc.register(c.req.valid("json")))));
+  app.openapi(R.loginRoute, async (c) => c.json(ok(await authSvc.login(c.req.valid("json")))));
+  app.openapi(R.meRoute, async (c) => {
+    const { userId, tenantId } = c.get("auth");
+    return c.json(ok(await authSvc.me(userId, tenantId)));
+  });
   app.openapi(R.createExpertRoute, notImplemented);
   app.openapi(R.listExpertsRoute, notImplemented);
   app.openapi(R.getExpertRoute, notImplemented);

@@ -17,11 +17,11 @@
 - [x] S2.5 漂移测试通过（B9）
 
 ## S3 backend：认证与租户
-- [ ] S3.1 `@node-rs/argon2` + `jose` 依赖
-- [ ] S3.2 `POST /api/auth/register`（一个事务里建 user + tenant）
-- [ ] S3.3 `POST /api/auth/login` + `GET /api/me`
-- [ ] S3.4 `authMiddleware`：JWT → `c.set("auth", ...)`
-- [ ] S3.5 测试 B1 / B2
+- [x] S3.1 `@node-rs/argon2` + `jose` 依赖
+- [x] S3.2 `POST /api/auth/register`（一个事务里建 user + tenant）
+- [x] S3.3 `POST /api/auth/login` + `GET /api/me`
+- [x] S3.4 `authMiddleware`：JWT → `c.set("auth", ...)`
+- [x] S3.5 测试 B1 / B2
 
 ## S4 backend：专家与素材
 - [ ] S4.1 专家 CRUD（建/列表/详情）
