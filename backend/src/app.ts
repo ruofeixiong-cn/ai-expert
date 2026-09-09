@@ -11,8 +11,12 @@ import * as authSvc from "./services/auth.js";
 import * as sessionSvc from "./services/session.js";
 import * as expertSvc from "./services/expert.js";
 import * as modelSvc from "./services/model.js";
+import * as chatSvc from "./services/chat.js";
+import * as agentClient from "./agent-client/index.js";
+import { teeStream, sseFrame } from "./services/sse.js";
 import {
   setRefreshCookie, readRefreshCookie, clearRefreshCookie, clientMeta,
+  setFanCookie, readFanCookie,
 } from "./core/cookies.js";
 
 const HealthData = z
@@ -211,12 +215,74 @@ export function createApp() {
     c.json(ok(await expertSvc.listMaterials(c.get("auth").tenantId, c.req.valid("param").id))),
   );
 
-  // ── M3 粉丝对话：契约已冻结，实现见 specs/004-m3-chat/tasks.md U4 ──
-  const notImplemented = (): never => {
-    throw new HTTPException(501, { message: "尚未实现（M3 实现中）" });
+  // ── M3 粉丝对话 ──
+  //
+  // 这两个接口不走 requireAuth：分享页首屏要求注册等于转化率归零。
+  // 身份是签名 Cookie 里的匿名账号，首次访问自动创建。
+  const ensureFan = async (c: Parameters<typeof readFanCookie>[0]) => {
+    const existing = await chatSvc.readFanToken(readFanCookie(c));
+    if (existing && (await chatSvc.fanExists(existing))) return existing;
+    const id = await chatSvc.createAnonymousFan();
+    setFanCookie(c, await chatSvc.signFanToken(id));
+    return id;
   };
-  app.openapi(R.getChatExpertRoute, notImplemented);
-  app.openapi(R.chatRoute, notImplemented);
+
+  app.openapi(R.getChatExpertRoute, async (c) => {
+    const fanId = await ensureFan(c);
+    // 路由同时声明了 200 与 404，必须显式给状态码，否则 TS 把两种响应体混在一起
+    return c.json(ok(await chatSvc.getChatExpert(c.req.valid("param").slug, fanId)), 200);
+  });
+
+  app.openapi(R.chatRoute, async (c) => {
+    const fanId = await ensureFan(c);
+    const { slug } = c.req.valid("param");
+    const { question } = c.req.valid("json");
+
+    // 额度不足要发 event: error + 402，【不是断流】——
+    // 断流的话前端分不清「网络挂了」和「要付费」。
+    let session;
+    try {
+      session = await chatSvc.beginChat(slug, fanId, question);
+    } catch (err) {
+      if (err instanceof AppError && err.appCode === Code.PAYMENT_REQUIRED) {
+        return new Response(sseFrame("error", { code: 402, message: err.message }), {
+          status: 200,
+          headers: { "content-type": "text/event-stream", "cache-control": "no-cache" },
+        });
+      }
+      throw err;
+    }
+
+    const upstream = await agentClient.openChatStream({
+      expert_id: session.expertId,
+      tenant_id: session.tenantId,
+      question,
+    });
+
+    const started = Date.now();
+    const body = teeStream(upstream.body!, c.req.raw.signal, async (sniffer) => {
+      const done = sniffer.done;
+      if (!done?.answer) return; // 没跑完就没有回答可落，也不该扣额度
+      await chatSvc.settleChat(session, {
+        answer: done.answer,
+        chunkIds: sniffer.meta?.chunk_ids ?? [],
+        confidence: sniffer.meta?.confidence ?? null,
+        finishReason: done.finish_reason ?? "stop",
+        safety: done.safety ?? "pass",
+        promptTokens: done.prompt_tokens ?? 0,
+        completionTokens: done.completion_tokens ?? 0,
+        latencyMs: done.latency_ms ?? Date.now() - started,
+      });
+    });
+
+    return new Response(body, {
+      headers: {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+        "x-accel-buffering": "no",
+      },
+    });
+  });
 
   // ── M2 七维 ──
   app.openapi(R.getModelRoute, async (c) =>

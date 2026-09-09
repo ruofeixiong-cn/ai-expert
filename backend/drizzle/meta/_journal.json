@@ -71,6 +71,13 @@
       "when": 1788968384900,
       "tag": "0009_chat_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788971133461,
+      "tag": "0010_share_lookup",
+      "breakpoints": true
     }
   ]
 }

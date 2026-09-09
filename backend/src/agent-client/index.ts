@@ -31,6 +31,27 @@ export async function extract(
   return data;
 }
 
+/**
+ * 对话是 SSE，拿的是原始流，所以不走 openapi-fetch（它会把 body 读成 JSON）。
+ * 请求体形状仍然从契约推导 —— agent 改了字段名这里会编译期报错。
+ */
+export async function openChatStream(
+  body: paths["/internal/chat"]["post"]["requestBody"]["content"]["application/json"],
+  signal?: AbortSignal,
+): Promise<Response> {
+  const res = await fetch(`${env.AGENT_URL}/internal/chat`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-internal-token": env.INTERNAL_TOKEN },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    const detail = await res.text().catch(() => "");
+    translate(res.status, detail.slice(0, 200));
+  }
+  return res;
+}
+
 export async function requestModelExtraction(
   body: paths["/internal/extract-model"]["post"]["requestBody"]["content"]["application/json"],
 ) {

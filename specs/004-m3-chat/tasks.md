@@ -22,12 +22,12 @@
 - [x] U3.6 单测 D6 + 出口闸门
 
 ## U4 backend
-- [ ] U4.1 匿名粉丝身份（签名 Cookie）
-- [ ] U4.2 `GET /api/chat/{slug}`（未上线返回 404）
-- [ ] U4.3 SSE 代理 + TransformStream 嗅探 + abort 兜底（D11）
-- [ ] U4.4 试聊额度与 402
-- [ ] U4.5 落 conversations / messages
-- [ ] U4.6 测试 D2 / D8 / D11
+- [x] U4.1 匿名粉丝身份（签名 Cookie）
+- [x] U4.2 `GET /api/chat/{slug}`（未上线返回 404）
+- [x] U4.3 SSE 代理 + TransformStream 嗅探 + abort 兜底（D11）
+- [x] U4.4 试聊额度与 402
+- [x] U4.5 落 conversations / messages
+- [x] U4.6 测试 D2 / D8 / D11
 
 ## U5 frontend：`/s/:slug` 对话页
 - [ ] U5.1 SSE 手动分帧（`EventSource` 不支持 POST 与自定义 header）

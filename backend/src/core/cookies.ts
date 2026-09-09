@@ -34,3 +34,24 @@ export const clientMeta = (c: Context) => ({
     c.req.header("x-real-ip") ??
     null,
 });
+
+
+/**
+ * 匿名粉丝身份的 Cookie。
+ *
+ * SameSite 用 Lax 而不是 Strict：分享链接是从微信/朋友圈【跨站点击】进来的，
+ * Strict 会让第一次访问带不上 Cookie，粉丝每刷新一次就换一个身份，
+ * 试聊额度形同虚设。
+ */
+const FAN = "ae_fan";
+
+export const setFanCookie = (c: Context, token: string) =>
+  setCookie(c, FAN, token, {
+    httpOnly: true,
+    secure: env.NODE_ENV === "production",
+    sameSite: "Lax",
+    path: "/api/chat",
+    maxAge: 180 * 24 * 3600,
+  });
+
+export const readFanCookie = (c: Context) => getCookie(c, FAN) ?? null;
