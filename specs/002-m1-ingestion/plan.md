@@ -44,13 +44,13 @@ class EmbeddingProvider(Protocol):
 
 | 实现 | 何时用 | 说明 |
 |---|---|---|
-| `DashScopeEmbedding` | 有 `DASHSCOPE_API_KEY` 时 | 百炼 `text-embedding-v3`，OpenAI 兼容端点 |
+| `DashScopeEmbedding` | 有 `DASHSCOPE_API_KEY` 时 | 百炼 `text-embedding-v3`，OpenAI 兼容端点（**key 已到位并实测通过**，dim=1024 确认） |
 | `FakeEmbedding` | 无 key / CI / 单测 | **确定性**：`sha256(text)` 播种伪随机，同文本永远同向量 |
 
 由 `EMBEDDING_PROVIDER` 环境变量选择，默认 `auto`（有 key 用真的，没 key 用假的并在启动日志里明确警告）。
 
-**为什么值得**：
-- 百炼 key 还没到位，但 M1 现在就要能端到端跑通；
+**为什么值得**（key 已于 2026-09-09 到位，但这个设计仍然保留）：
+- CI 不该为了跑测试去调真实 API —— 会 flaky、会花钱、会因为限流随机失败；
 - CI 不该依赖外部 API（会 flaky、会花钱）；
 - 假向量是确定性的，所以"同内容 → 同向量"这类断言仍然成立。
 
