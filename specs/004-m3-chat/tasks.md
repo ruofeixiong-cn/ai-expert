@@ -30,10 +30,10 @@
 - [x] U4.6 测试 D2 / D8 / D11
 
 ## U5 frontend：`/s/:slug` 对话页
-- [ ] U5.1 SSE 手动分帧（`EventSource` 不支持 POST 与自定义 header）
-- [ ] U5.2 流式打字效果 + 试聊剩余提示
-- [ ] U5.3 402 → 付费引导（M5 前先占位）
-- [ ] U5.4 `tsc` + `vite build`
+- [x] U5.1 SSE 手动分帧（`EventSource` 不支持 POST 与自定义 header）
+- [x] U5.2 流式打字效果 + 试聊剩余提示
+- [x] U5.3 402 → 付费引导（M5 前先占位）
+- [x] U5.4 `tsc` + `vite build`
 
 ## U6 端到端
 - [ ] U6.1 D3 / D4 / D9 / D10

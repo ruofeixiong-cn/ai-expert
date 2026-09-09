@@ -8,6 +8,7 @@ import LoginPage from "@/features/auth/LoginPage";
 import ExpertListPage from "@/features/experts/ExpertListPage";
 import ExpertDetailPage from "@/features/experts/ExpertDetailPage";
 import ModelPage from "@/features/experts/ModelPage";
+import SharePage from "@/features/chat/SharePage";
 
 const qc = new QueryClient({
   defaultOptions: {
@@ -46,6 +47,9 @@ export default function App() {
   const [booting, setBooting] = useState(true);
 
   useEffect(() => {
+    // 分享页是给粉丝看的，没有博主会话可恢复 ——
+    // 不跳过的话每个粉丝打开链接都要先等一次注定 401 的 /refresh。
+    if (location.pathname.startsWith("/s/")) return setBooting(false);
     // access token 只存内存，刷新页面就没了 ——
     // 用 httpOnly Cookie 里的 refresh token 换一个回来，恢复登录态。
     void restoreSession().finally(() => setBooting(false));
@@ -59,6 +63,8 @@ export default function App() {
     <QueryClientProvider client={qc}>
       <BrowserRouter>
         <Routes>
+          {/* 粉丝端。不需要登录，也不套 Creator 的外壳。 */}
+          <Route path="/s/:slug" element={<SharePage />} />
           <Route path="/login" element={authed ? <Navigate to="/app" replace /> : <LoginPage />} />
           <Route path="/app" element={<Protected />}>
             <Route index element={<ExpertListPage />} />
