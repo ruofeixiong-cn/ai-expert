@@ -72,3 +72,12 @@ async def seeded(owner_engine):
             ).scalar_one()
             out[key] = {"tenant_id": tenant_id, "expert_id": expert_id, "chunk_id": chunk_id}
     return out
+
+
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def _dispose_agent_engine():
+    """agent 侧的 engine 是模块级全局，测试结束要显式释放。"""
+    yield
+    from app.db.session import dispose_engine
+
+    await dispose_engine()

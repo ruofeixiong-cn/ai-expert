@@ -13,7 +13,7 @@
 ## T2 本地基础设施
 - [x] T2.1 `docker-compose.yml`：postgres(pgvector) + redis
 - [x] T2.2 `infra/postgres/init/01-roles.sql`：建 vector 扩展 + `app_backend` / `app_agent` 角色
-- [ ] T2.3 `make up` 起来，`make health` 数据库可连
+- [x] T2.3 `make up` 起来，`make health` 数据库可连
 
 ## T3 backend（Node + Hono + Drizzle）
 - [x] T3.1 `package.json` / `tsconfig.json` / `drizzle.config.ts`
@@ -45,11 +45,11 @@
 - [x] T6.3 `contracts/README.md`：SSE 事件协议 + 错误码表
 
 ## T7 隔离验证（M0 的核心）
-- [~] T7.1 `backend/tests/rls.spec.ts`：A3 / A5 / A6 / A7
-- [~] T7.2 `agent/tests/test_rls.py`：A4 / A5 / A6 / A7
-- [~] T7.3 `agent/tests/test_schema_drift.py`：A8
+- [x] T7.1 `backend/tests/rls.spec.ts`：A3 / A5 / A6 / A7
+- [x] T7.2 `agent/tests/test_rls.py`：A4 / A5 / A6 / A7
+- [x] T7.3 `agent/tests/test_schema_drift.py`：A8
 - [x] T7.4 `make lint-db-access`：禁止裸连接
-- [ ] T7.5 `make test` 全绿
+- [x] T7.5 `make test` 全绿
 
 ---
 
@@ -61,34 +61,51 @@
 
 ---
 
-## 当前状态（2026-09-09）
+## 当前状态：M0 完成 ✅
 
-**28/33 完成并验证。剩余 5 项全部卡在同一个原因：本机没有可运行的 Postgres。**
+**33/33 完成并验证。10 条验收标准全部通过。**
 
-### 已验证通过
+| 验收 | 断言 | 结果 |
+|---|---|---|
+| A1 | 三服务健康检查全绿 | ✅ backend / agent / frontend 均 200；agent `readyz` 返回 `database: ok`；缺 `x-internal-token` 时 401 |
+| A2 | 迁移可重复执行 | ✅ 连跑三次，第二次起只有 `NOTICE ... already exists, skipping`，非错误 |
+| A3 | 租户 A 查不到租户 B 的 chunk（Node 侧） | ✅ |
+| A4 | 同上（Python 侧） | ✅ |
+| A5 | 未设置租户返回 0 行而非报错（fail-closed） | ✅ 未设置与空串两种情况都验证了 |
+| A6 | `app_agent` 查 `users`/`tenants` → permission denied | ✅ 另外验证了 `experts` 只读（UPDATE 被拒） |
+| A7 | 跨租户写入被 `WITH CHECK` 拒绝 | ✅ 两侧 |
+| A8 | Python 表定义与真实 DDL 无漂移 | ✅ |
+| A9 | `make contract` 幂等 | ✅ |
+| A10 | 前端用的是生成的类型 | ✅ 反证：后端字段改名后前端 `tsc` 报 `TS2339` |
 
-| 验收 | 结果 |
-|---|---|
-| A1 三服务健康检查 | ✅ backend `/health`、agent `/internal/health` 均返回 200；`x-internal-token` 缺失时 `/internal/readyz` 返回 401 |
-| A9 `make contract` 幂等 | ✅ 连续两次生成，`contracts/` 无 diff |
-| A10 前端吃生成的类型 | ✅ **反证通过**：把后端 `readyz` 的 `database` 改名为 `db` 并重新生成契约后，前端 `tsc` 报 `TS2339: Property 'database' does not exist` |
-| T7.4 数据库入口唯一 | ✅ `make lint-db-access` 通过 |
-| 前端构建 | ✅ `vite build` 成功 |
+测试总数：Node 6 条 + Python 11 条 = **17 条断言全过**。
 
-### 被阻塞
+### 数据库实况核对（不只信测试，直接查 catalog）
 
-| 验收 | 阻塞原因 |
-|---|---|
-| A2 迁移可重复执行 | 无 Postgres |
-| A3~A8 隔离与漂移测试 | 无 Postgres（测试代码已写完，共 6 + 11 条断言） |
+```
+  relname   | rls | forced        tablename  |    policyname
+------------+-----+--------      ------------+------------------
+ build_jobs | t   | t             build_jobs | tenant_isolation
+ chunks     | t   | t             chunks     | tenant_isolation
+ experts    | t   | t             experts    | tenant_isolation
+ tenants    | f   | f
+ users      | f   | f
 
-### 解除阻塞
-
-装 Docker Desktop（<https://docker.com/products/docker-desktop>），然后：
-
-```bash
-make up && make migrate && make test
+app_agent 实际被授权的表（允许清单生效）：
+ build_jobs | DELETE,INSERT,SELECT,UPDATE
+ chunks     | DELETE,INSERT,SELECT,UPDATE
+ experts    | SELECT
 ```
 
-> 隔离测试刻意设计成**数据库不可达时失败而不是跳过** —— 跳过会让 CI 变绿，
-> 制造"隔离已验证"的错觉，而这正是验收标准 #8 最不能出的错。
+### 实现过程中修掉的问题
+
+| # | 问题 | 修法 |
+|---|---|---|
+| 1 | `SET LOCAL app.current_tenant = $1` 是非法 SQL（SET 不接受绑定参数） | 改用 `set_config(name, value, true)`，两侧统一；技术选型文档同步修正 |
+| 2 | `current_setting(..., true)` 被设成空串时 `''::uuid` 抛错，策略从"过滤"变成"报错" | 策略加 `NULLIF(..., '')` |
+| 3 | pytest-asyncio 的 session 级 fixture 与 function 级事件循环不匹配 | `asyncio_default_fixture_loop_scope`/`_test_loop_scope` 都设为 session |
+| 4 | Docker Desktop for Mac 没把 CLI 链到 PATH，且 `docker-credential-desktop` 也在同一目录 | Makefile 内联 `PATH="$(DOCKER_DIR):$$PATH" docker`（`export PATH :=` 无效——GNU make 用启动时的 PATH 直接 exec） |
+
+### 下一步
+
+M1 内容入库。开工前先冻结 M1 的接口契约，再放三方并行。

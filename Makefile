@@ -1,5 +1,13 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
+
+# Docker Desktop for Mac 不一定把 CLI 链到 /usr/local/bin（那步要管理员密码）。
+# 注意：光用绝对路径不够 —— docker 还要调用同目录的 docker-credential-desktop，
+# 所以必须把整个目录加进 PATH。
+# （export PATH := 不行 —— GNU make 用它启动时的 PATH 直接 exec，不看变量。）
+DOCKER_BIN := $(shell command -v docker 2>/dev/null || echo /Applications/Docker.app/Contents/Resources/bin/docker)
+DOCKER_DIR := $(shell dirname $(DOCKER_BIN))
+DOCKER := PATH="$(DOCKER_DIR):$$PATH" docker
 .PHONY: help install up down migrate dev health contract contract-check test typecheck lint-db-access clean
 
 help: ## 显示所有命令
@@ -10,13 +18,13 @@ install: ## 安装三个服务的依赖
 	cd agent && uv sync
 
 up: ## 起本地基础设施（postgres + redis）
-	docker compose up -d
+	$(DOCKER) compose up -d
 	@echo "等待 postgres 就绪..."
-	@until docker compose exec -T postgres pg_isready -U app_owner -d ai_expert >/dev/null 2>&1; do sleep 1; done
+	@until $(DOCKER) compose exec -T postgres pg_isready -U app_owner -d ai_expert >/dev/null 2>&1; do sleep 1; done
 	@echo "✓ postgres ready"
 
 down: ## 停掉基础设施（保留数据卷）
-	docker compose down
+	$(DOCKER) compose down
 
 migrate: ## 跑数据库迁移（以 app_owner 身份）
 	pnpm --filter backend migrate
@@ -60,5 +68,5 @@ test: lint-db-access ## 跑全部测试（需要 postgres 在跑）
 	cd agent && uv run pytest -q
 
 clean: ## 清干净（含数据卷，会删数据）
-	docker compose down -v
+	$(DOCKER) compose down -v
 	rm -rf node_modules */node_modules agent/.venv

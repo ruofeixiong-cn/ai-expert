@@ -22,6 +22,10 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 pythonpath = ["."]
+# session 级的 fixture（owner_engine / seeded）和测试必须跑在同一个事件循环里，
+# 否则 asyncpg 的连接会 "attached to a different loop"。
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 
 [tool.uv]
