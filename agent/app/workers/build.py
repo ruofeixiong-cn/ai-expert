@@ -7,6 +7,7 @@ run_build 是一个纯 async 函数，不依赖 ARQ ——
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from uuid import UUID
 
@@ -30,6 +31,15 @@ log = logging.getLogger(__name__)
 INJECTED_CONFIDENCE = 0.2
 NORMAL_CONFIDENCE = 1.0
 
+# ── 并发与卡死回收（B06，见 docs/adr/002）──────────────────────────────────
+ACTIVE_STATUSES = ("queued", "running")
+# backend 迁移里的部分唯一索引：同一个专家同时最多一个进行中的任务
+ACTIVE_JOB_INDEX = "build_jobs_one_active_per_expert"
+# 多久没有进展就算卡死。**与 backend 的 STALE_BUILD_SECONDS 同源，且应当相等**，
+# 比下面 WorkerSettings.job_timeout（15 分钟）宽裕
+STALE_JOB_SECONDS = 20 * 60
+INTERRUPTED_ERROR = "构建超时或被中断，请重新构建。"
+
 
 class BuildError(Exception):
     """可以直接展示给博主的失败原因。"""
@@ -48,6 +58,10 @@ async def _progress(
             .where(build_jobs.c.id == job_id)
             .values(status=status, progress=progress, stage=stage, error=error, updated_at=func.now())
         )
+
+
+async def _mark_failed(tenant_id: UUID, job_id: UUID, error: str) -> None:
+    await _progress(tenant_id, job_id, status="failed", progress=0, stage=None, error=error)
 
 
 async def run_build(
@@ -134,17 +148,19 @@ async def run_build(
         await _progress(tenant_id, job_id, status="succeeded", progress=100, stage="done")
         return len(pending)
 
-    except BuildError as exc:
-        await _progress(
-            tenant_id, job_id, status="failed", progress=0, stage=None, error=str(exc)
-        )
+    except asyncio.CancelledError:
+        # ARQ 的 job_timeout 通过 cancel 实现。CancelledError 是 BaseException，
+        # 下面的 except Exception 接不住 —— 第一版因此把任务永远留在 running，
+        # 前端进度条永远在转（B06）。标记失败，再原样抛出，让取消照常完成。
+        log.warning("构建被取消（超时或中断）expert=%s job=%s", expert_id, job_id)
+        await _mark_failed(tenant_id, job_id, INTERRUPTED_ERROR)
         raise
-    except Exception as exc:  # noqa: BLE001
+    except BuildError as exc:
+        await _mark_failed(tenant_id, job_id, str(exc))
+        raise
+    except Exception:  # noqa: BLE001
         log.exception("构建失败 expert=%s job=%s", expert_id, job_id)
-        await _progress(
-            tenant_id, job_id, status="failed", progress=0, stage=None,
-            error="构建过程中出现意外错误，请重试或联系支持。",
-        )
+        await _mark_failed(tenant_id, job_id, "构建过程中出现意外错误，请重试或联系支持。")
         raise
 
 
@@ -209,15 +225,17 @@ async def run_extract_model(expert_id: UUID, tenant_id: UUID, job_id: UUID) -> i
         n = await _run_extraction(expert_id, tenant_id, job_id)
         await _progress(tenant_id, job_id, status="succeeded", progress=100, stage="done")
         return n
-    except BuildError as exc:
-        await _progress(tenant_id, job_id, status="failed", progress=0, stage=None, error=str(exc))
+    except asyncio.CancelledError:
+        # 同 run_build：超时取消也要把任务标记为失败（B06）
+        log.warning("提炼被取消（超时或中断）expert=%s job=%s", expert_id, job_id)
+        await _mark_failed(tenant_id, job_id, INTERRUPTED_ERROR)
         raise
-    except Exception:
+    except BuildError as exc:
+        await _mark_failed(tenant_id, job_id, str(exc))
+        raise
+    except Exception:  # noqa: BLE001
         log.exception("提炼失败 expert=%s job=%s", expert_id, job_id)
-        await _progress(
-            tenant_id, job_id, status="failed", progress=0, stage=None,
-            error="提炼过程中出现意外错误，请重试或联系支持。",
-        )
+        await _mark_failed(tenant_id, job_id, "提炼过程中出现意外错误，请重试或联系支持。")
         raise
 
 
@@ -242,3 +260,6 @@ class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
     max_jobs = 4
     job_timeout = 900
+    # 不自动重试（ADR-002）。重试一个已经被回收、标记为失败的任务，
+    # 会和博主新点的那一次撞上唯一索引。失败就让博主自己点，错误信息是可读的。
+    max_tries = 1
