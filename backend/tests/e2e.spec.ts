@@ -130,6 +130,28 @@ describe.skipIf(!enabled)("端到端：内容入库", () => {
     expect(mats[0].chunkCount).toBe(detail.chunkCount);
   }, 120_000);
 
+  // 加固 B06（ADR-002）
+  it("连点两次构建：第二次返回 409，而不是两个任务并发写乱切片", async () => {
+    const { token } = await creator();
+    const id = await newExpert(token);
+    await call(`/api/experts/${id}/materials`, {
+      method: "POST", token,
+      body: JSON.stringify({ sourceType: "paste", title: "指南", content: ARTICLE }),
+    });
+
+    const [a, b] = await Promise.all([
+      call(`/api/experts/${id}/build`, { method: "POST", token }),
+      call(`/api/experts/${id}/build`, { method: "POST", token }),
+    ]);
+
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+    const loser = a.status === 409 ? a : b;
+    expect((await json(loser)).message).toContain("正在构建");
+
+    const { detail } = await waitBuild(token, id);
+    expect(detail.lastBuild.status).toBe("succeeded");
+  }, 120_000);
+
   // B6
   it("重复上传同一内容 + 重新构建，不产生重复切片", async () => {
     const { token } = await creator();
