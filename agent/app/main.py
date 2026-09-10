@@ -7,6 +7,8 @@ AI 专家平台 · agent 服务。
 
 from __future__ import annotations
 
+import asyncio
+import hmac
 from contextlib import asynccontextmanager
 from typing import Annotated, AsyncIterator, Literal
 from uuid import UUID
@@ -33,7 +35,9 @@ app = FastAPI(
 async def require_internal_token(
     x_internal_token: Annotated[str | None, Header()] = None,
 ) -> None:
-    if x_internal_token != settings.INTERNAL_TOKEN:
+    # 常数时间比较（B05）。`!=` 在第一个不同的字节处就返回，
+    # 响应时间会泄露「猜对了前几位」—— 内网也不该留这个口子
+    if not hmac.compare_digest((x_internal_token or "").encode(), settings.INTERNAL_TOKEN.encode()):
         raise HTTPException(status_code=401, detail="invalid internal token")
 
 
@@ -89,7 +93,9 @@ async def extract_content(req: ExtractRequest) -> ExtractResponse:
         else:
             if not req.filename or not req.content_base64:
                 raise HTTPException(status_code=400, detail="缺少 filename 或 content_base64")
-            result = ex.from_file(req.filename, req.content_base64)
+            # pymupdf / python-docx 是同步 CPU 活。直接在这里调用，解析一个大 PDF
+            # 的这段时间，同一进程里所有粉丝的对话流全部停住（B07）
+            result = await asyncio.to_thread(ex.from_file, req.filename, req.content_base64)
     except ex.ExtractError as exc:
         # 422 而不是 500：这不是服务故障，是这份素材提取不了，用户换个方式就行
         raise HTTPException(status_code=422, detail=str(exc)) from exc
