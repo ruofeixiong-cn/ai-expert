@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable, uuid, text, timestamp, integer, boolean,
   jsonb, doublePrecision, vector, index, uniqueIndex, bigserial,
@@ -332,7 +333,15 @@ export const buildJobs = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("build_jobs_expert_idx").on(t.expertId)],
+  (t) => [
+    index("build_jobs_expert_idx").on(t.expertId),
+    // 同一个专家同时最多一个进行中的任务（B06，见 docs/adr/002）。
+    // 全量构建与「只重新提炼」都算 —— 两者写同一份草稿。
+    // 不靠应用层「先查有没有在跑」：那是 check-then-act，并发下两个都会过
+    uniqueIndex("build_jobs_one_active_per_expert")
+      .on(t.expertId)
+      .where(sql`status in ('queued', 'running')`),
+  ],
 );
 
 // ── feedbacks ────────────────────────────────────────────────

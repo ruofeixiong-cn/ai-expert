@@ -70,6 +70,35 @@ export async function listExperts(tenantId: string) {
 }
 
 /**
+ * 多久没有进展就算卡死（B06，见 docs/adr/002）。
+ *
+ * **与 agent 的 STALE_JOB_SECONDS 同源，且应当相等**，比 ARQ 的 job_timeout（15 分钟）宽裕。
+ * agent 入队时按同样的条件回收（写库）；这里只在读的时候推导（不写库）——
+ * build_jobs 只有 Python 写，写入方唯一，状态才不会两边打架。
+ */
+export const STALE_BUILD_SECONDS = 20 * 60;
+
+/**
+ * 构建进度的对外形状。
+ *
+ * 进行中、但超过 STALE_BUILD_SECONDS 没有更新的任务，对外显示为「已中断」。
+ * worker 被 kill、ARQ 超时没来得及写回……第一版会让前端的进度条永远转下去。
+ */
+function presentBuild(job: typeof buildJobs.$inferSelect) {
+  const active = job.status === "queued" || job.status === "running";
+  const stale = active && Date.now() - job.updatedAt.getTime() > STALE_BUILD_SECONDS * 1000;
+  return {
+    jobId: job.id,
+    status: (stale ? "failed" : job.status) as "queued" | "running" | "succeeded" | "failed",
+    progress: stale ? 0 : job.progress,
+    stage: (stale ? null : (job.stage ?? null)) as
+      | "queued" | "parsing" | "chunking" | "embedding" | "extracting" | "done" | null,
+    error: stale ? "构建长时间没有进展，已视为中断，请重新构建。" : job.error,
+    updatedAt: job.updatedAt.toISOString(),
+  };
+}
+
+/**
  * 专家详情。
  *
  * ⚠️ 不属于当前租户时走的是同一条"查不到"路径 —— RLS 让跨租户查询直接返回 0 行，
@@ -114,17 +143,7 @@ export async function getExpert(tenantId: string, id: string) {
       confirmedDimensions: row.confirmedDimensions ?? [],
       shareSlug: row.shareSlug,
       publishedAt: row.publishedAt?.toISOString() ?? null,
-      lastBuild: job
-        ? {
-            jobId: job.id,
-            status: job.status as "queued" | "running" | "succeeded" | "failed",
-            progress: job.progress,
-            stage: (job.stage ?? null) as
-              | "queued" | "parsing" | "chunking" | "embedding" | "extracting" | "done" | null,
-            error: job.error,
-            updatedAt: job.updatedAt.toISOString(),
-          }
-        : null,
+      lastBuild: job ? presentBuild(job) : null,
     };
   });
 }

@@ -20,6 +20,8 @@ function translate(status: number, detail: unknown): never {
         : "内容处理服务暂时不可用，请稍后重试";
 
   if (status === 422) throw new AppError(Code.BAD_REQUEST, message, 400);
+  // 409 = 这个专家正在构建中（ADR-002）。原样透给前端，别当成服务故障
+  if (status === 409) throw new AppError(Code.CONFLICT, message, 409);
   throw new AppError(Code.INTERNAL, "内容处理服务暂时不可用，请稍后重试", 502);
 }
 
@@ -46,8 +48,13 @@ export async function openChatStream(
     signal,
   });
   if (!res.ok || !res.body) {
-    const detail = await res.text().catch(() => "");
-    translate(res.status, detail.slice(0, 200));
+    // 取 FastAPI 的 detail 字段，而不是整段响应体 —— 否则 409/422 透传给粉丝的
+    // 会是一串 `{"detail":"..."}` 原文
+    const detail = await res
+      .json()
+      .then((b) => (b as { detail?: unknown }).detail)
+      .catch(() => undefined);
+    translate(res.status, detail);
   }
   return res;
 }
