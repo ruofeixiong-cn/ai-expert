@@ -36,22 +36,40 @@ export function subscribe(fn: () => void) {
  */
 let inFlight: Promise<string | null> | null = null;
 
+/**
+ * 409 = 另一个标签页刚刚用同一个 refresh token 刷新过（B03）。
+ *
+ * 上面的单飞只能合并【同一个标签页】里的并发刷新。浏览器重启时恢复的几个标签页
+ * 会同时刷新，后到的那个拿着刚被轮换掉的旧 Cookie。服务端在宽限期内回 409 而不是
+ * 当成重放 —— 会话好好的，而且赢家的响应已经把新 Cookie 写进了浏览器，稍等一下
+ * 重试就行。不重试的话，这个标签页会以为自己掉线，跳到登录页。
+ */
+const CONFLICT_RETRY_DELAYS_MS = [300, 1000];
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export function refreshAccessToken(): Promise<string | null> {
   if (inFlight) return inFlight;
 
   inFlight = (async () => {
     try {
-      const res = await fetch("/api/auth/refresh", {
-        method: "POST",
-        credentials: "include", // 带上 httpOnly Cookie
-      });
-      if (!res.ok) {
-        setAccessToken(null);
-        return null;
+      for (let attempt = 0; ; attempt++) {
+        const res = await fetch("/api/auth/refresh", {
+          method: "POST",
+          credentials: "include", // 带上 httpOnly Cookie
+        });
+        const delay = CONFLICT_RETRY_DELAYS_MS[attempt];
+        if (res.status === 409 && delay !== undefined) {
+          await sleep(delay);
+          continue;
+        }
+        if (!res.ok) {
+          setAccessToken(null);
+          return null;
+        }
+        const body = (await res.json()) as { data: { accessToken: string } };
+        setAccessToken(body.data.accessToken);
+        return body.data.accessToken;
       }
-      const body = (await res.json()) as { data: { accessToken: string } };
-      setAccessToken(body.data.accessToken);
-      return body.data.accessToken;
     } catch {
       setAccessToken(null);
       return null;
