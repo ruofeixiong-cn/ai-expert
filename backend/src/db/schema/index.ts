@@ -297,10 +297,11 @@ export const messages = pgTable(
     chunkIds: uuid("chunk_ids").array().notNull().default([]),
     // 本次召回的最高 rerank 分数。低置信度 + 负反馈 = 疑似盲区（M4）。
     confidence: doublePrecision("confidence"),
-    // 'stop' | 'no_context' | 'identity' | 'length' | 'error'
+    // 'stop' | 'no_context' | 'identity' | 'length' | 'error' | 'aborted'
     // 'identity' = 身份提问（「你是真人吗」），召回之前就答掉了，没调模型。
+    // 'aborted'  = 粉丝看到部分回答后断开：content 是他看到的那部分，按已消费计（B02）。
     finishReason: text("finish_reason"),
-    // 出口闸门结论：'pass' | 'disclaimed'
+    // 出口闸门结论：'pass' | 'disclaimed'；null = 中途断开，全文没生成完、没过闸门
     safety: text("safety"),
     // 成本核算与看板要用
     promptTokens: integer("prompt_tokens"),
@@ -366,8 +367,32 @@ export const feedbacks = pgTable(
   ],
 );
 
+// ── chat_reservations ────────────────────────────────────────
+// 试聊额度的预扣（B02）。backend 独占，agent 没有任何权限。
+//
+// 第一版在开流前只「数已有的回答」，而回答要等生成结束才落库 ——
+// 「检查额度」和「扣额度」之间隔着一整次生成，同一个粉丝并发 10 个请求全部能过。
+// 现在开流前先写一条预扣；结算时删掉它、同时落回答（同一个事务）；出错时直接删掉。
+//
+// 为什么单独一张表，而不是往 messages 里插一条 pending 的回答：
+//   messages 有历史、看板、盲区、反馈四处读者，每一处都得学会跳过 pending，
+//   漏一处就是一个数字悄悄算错。预扣是短命的记账数据，不该混进业务历史。
+export const chatReservations = pgTable(
+  "chat_reservations",
+  {
+    // 就是这次回答将来在 messages 里的主键（ChatSession.assistantMessageId）
+    id: uuid("id").primaryKey(),
+    tenantId: uuid("tenant_id").notNull(),
+    expertId: uuid("expert_id").notNull().references(() => experts.id, { onDelete: "cascade" }),
+    fanUserId: uuid("fan_user_id").notNull().references(() => users.id),
+    // 过期的预扣不计入额度：进程在结算前崩溃时，额度不会被永久占住
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("chat_reservations_expert_fan_idx").on(t.expertId, t.fanUserId, t.createdAt)],
+);
+
 export const schema = {
   users, tenants, authSessions, refreshTokens, loginAttempts,
   experts, expertModelDrafts, materials, chunks, buildJobs,
-  conversations, messages, feedbacks,
+  conversations, messages, feedbacks, chatReservations,
 };

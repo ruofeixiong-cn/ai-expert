@@ -89,6 +89,7 @@ export async function rotate(presented: string, meta: ClientMeta): Promise<Token
   type Outcome =
     | { kind: "ok"; pair: TokenPair }
     | { kind: "invalid" }
+    | { kind: "race" }
     | { kind: "reuse"; sessionId: string; userId: string }
     | { kind: "expired"; sessionId: string };
 
@@ -108,17 +109,37 @@ export async function rotate(presented: string, meta: ClientMeta): Promise<Token
       .limit(1);
     if (!session) return { kind: "invalid" };
 
-    // ── 重放：这个 token 已经被用过了 ──
-    // 合法客户端轮换后就丢弃旧 token，绝不会再用。所以它再次出现只能是
-    // 被人复制走了。我们分不清眼前这个请求是攻击者还是真用户 ——
-    // 只能把整族踢掉，逼真用户重新登录。
+    // ── 这个 token 已经被用过了 ──
     if (token.usedAt !== null) {
+      // 宽限期内：多半是良性并发 —— 浏览器恢复的几个标签页同时刷新，
+      // 或者一个请求刚轮换完、另一个带着旧 Cookie 的请求已经在路上（B03）。
+      // 回「冲突，请重试」：不吊销会话，也【不签发】新 token ——
+      // 否则攻击者只要抢在这个窗口里，就能拿到第二条令牌链。
+      const sinceUsed = Date.now() - token.usedAt.getTime();
+      if (sinceUsed < TTL.REFRESH_REUSE_GRACE_SECONDS * 1000 && session.revokedAt === null) {
+        return { kind: "race" };
+      }
+      // 超过宽限期还出现：合法客户端轮换后就丢弃旧 token，绝不会再用，
+      // 只能是被人复制走了。我们分不清眼前这个请求是攻击者还是真用户 ——
+      // 只能把整族踢掉，逼真用户重新登录。
       return { kind: "reuse", sessionId: session.id, userId: session.userId };
     }
 
     if (session.revokedAt !== null) return { kind: "invalid" };
     if (session.absoluteExpiresAt <= new Date()) return { kind: "expired", sessionId: session.id };
     if (token.expiresAt <= new Date()) return { kind: "invalid" };
+
+    // ── 原子认领（B03）──
+    // 第一版是「读到 used_at 为空 → 签发新 token → 最后才标记已用」。
+    // 两个请求同时读到空，就会各自签发成功，分叉出两条都有效的令牌链。
+    // 改成先用一条带条件的 UPDATE 认领：并发的第二个请求会等第一个提交，
+    // 然后因为 used_at 已经非空而认领到 0 行。
+    const [claimed] = await tx
+      .update(refreshTokens)
+      .set({ usedAt: new Date() })
+      .where(and(eq(refreshTokens.id, token.id), isNull(refreshTokens.usedAt)))
+      .returning({ id: refreshTokens.id });
+    if (!claimed) return { kind: "race" };
 
     // ── 正常轮换 ──
     // 角色【每次刷新时重新读】而不是缓存在会话里：这样把某个用户降权后，
@@ -138,9 +159,10 @@ export async function rotate(presented: string, meta: ClientMeta): Promise<Token
       .where(eq(refreshTokens.tokenHash, hashToken(pair.refreshToken)))
       .limit(1);
 
+    // used_at 已经在上面认领时写入，这里只补上「被谁替换」—— 形成链，便于审计
     await tx
       .update(refreshTokens)
-      .set({ usedAt: new Date(), replacedById: replacement?.id ?? null })
+      .set({ replacedById: replacement?.id ?? null })
       .where(eq(refreshTokens.id, token.id));
 
     await tx
@@ -154,6 +176,9 @@ export async function rotate(presented: string, meta: ClientMeta): Promise<Token
   switch (outcome.kind) {
     case "ok":
       return outcome.pair;
+    case "race":
+      // 409 而不是 401：会话好好的，稍候重试一次就行（此时浏览器里已经是新 Cookie 了）
+      throw new AppError(Code.CONFLICT, "登录状态刚在别处刷新过，请重试", 409);
     case "reuse":
       // 独立事务，确保吊销真正落库
       await revokeSession(outcome.sessionId, "reuse_detected");

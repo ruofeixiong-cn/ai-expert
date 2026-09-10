@@ -7,6 +7,14 @@ export const TTL = {
   REFRESH_SECONDS: 30 * 24 * 3600,
   /** 会话绝对上限。刷新只能续 refresh token，不能突破这条线。 */
   SESSION_ABSOLUTE_SECONDS: 90 * 24 * 3600,
+  /**
+   * refresh token「已用过」之后的宽限期（B03）。
+   *
+   * 这个窗口内它再次出现，多半是良性并发（浏览器恢复的几个标签页同时刷新）：
+   * 返回 409 让客户端重试，不吊销会话、也不签发新 token。
+   * 超过窗口再出现，才按重放处理、吊销整个会话族。
+   */
+  REFRESH_REUSE_GRACE_SECONDS: 10,
 } as const;
 
 export const LOGIN_THROTTLE = {

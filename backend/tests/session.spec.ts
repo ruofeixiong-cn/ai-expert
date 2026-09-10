@@ -87,26 +87,8 @@ describe("Access / Refresh token", () => {
     expect(res.status).toBe(401);
   });
 
-  it("★ 重放检测：旧 refresh token 被再次使用时，吊销整个会话族", async () => {
-    const { refresh: t1, access } = await signup();
-
-    // 正常轮换：t1 → t2
-    const r1 = await call("/api/auth/refresh", { method: "POST", cookie: t1 });
-    const t2 = readCookie(r1)!;
-    expect(t2).toBeTruthy();
-
-    // 攻击者拿着窃取到的 t1 再刷一次
-    const replay = await call("/api/auth/refresh", { method: "POST", cookie: t1 });
-    expect(replay.status).toBe(401);
-
-    // 关键断言：不只是这次被拒 —— 合法用户手上的 t2 也必须失效，
-    // 因为我们分不清谁是攻击者，只能两边都踢掉
-    const afterBreach = await call("/api/auth/refresh", { method: "POST", cookie: t2 });
-    expect(afterBreach.status).toBe(401);
-
-    // 会话族被吊销后，还没过期的 access token 也应立即失效
-    expect((await call("/api/me", { token: access })).status).toBe(401);
-  });
+  // 重放检测挪到了 refresh.spec.ts：B03 引入宽限期之后，
+  // 「立即重放」与「超过宽限期后重放」行为不同，要和并发用例放在一起看。
 
   it("登出后，未过期的 access token 立即失效（无状态 token 的即时吊销）", async () => {
     const { access, refresh } = await signup();

@@ -13,6 +13,7 @@ export const Code = {
   CONFLICT: 1409,
   PAYMENT_REQUIRED: 402,
   RATE_LIMITED: 1429,
+  PAYLOAD_TOO_LARGE: 1413,
   INTERNAL: 5000,
 } as const;
 

@@ -15,6 +15,7 @@ import * as chatSvc from "./services/chat.js";
 import * as feedbackSvc from "./services/feedback.js";
 import * as agentClient from "./agent-client/index.js";
 import { teeStream, sseFrame } from "./services/sse.js";
+import { bodyLimits } from "./middleware/body-limit.js";
 import {
   setRefreshCookie, readRefreshCookie, clearRefreshCookie, clientMeta,
   setFanCookie, readFanCookie,
@@ -102,6 +103,9 @@ export function createApp() {
     return c.json(ok({ database, agent }));
   });
 
+  // ── 请求体大小上限（B07）：挂在所有业务路由之前 ──
+  app.use("*", bodyLimits);
+
   // ── 需要登录的路径 ──
   app.use("/api/me", requireAuth);
   app.use("/api/auth/logout", requireAuth);
@@ -159,8 +163,11 @@ export function createApp() {
       pair = await sessionSvc.rotate(presented, clientMeta(c));
     } catch (e) {
       // 刷新失败（含重放导致的整族吊销）必须清掉 Cookie，
-      // 否则前端会拿着一个死 token 无限重试
-      clearRefreshCookie(c);
+      // 否则前端会拿着一个死 token 无限重试。
+      //
+      // 唯一的例外是并发冲突（B03）：同一个浏览器里另一个请求刚刚轮换成功、
+      // 写下了新 Cookie —— 这时清 Cookie 会把那个新 token 一起删掉。
+      if (!(e instanceof AppError && e.appCode === Code.CONFLICT)) clearRefreshCookie(c);
       throw e;
     }
     setRefreshCookie(c, pair.refreshToken);
@@ -254,28 +261,25 @@ export function createApp() {
       throw err;
     }
 
-    const upstream = await agentClient.openChatStream({
-      expert_id: session.expertId,
-      tenant_id: session.tenantId,
-      question,
-      message_id: session.assistantMessageId,
-    });
+    let upstream: Response;
+    try {
+      upstream = await agentClient.openChatStream({
+        expert_id: session.expertId,
+        tenant_id: session.tenantId,
+        question,
+        message_id: session.assistantMessageId,
+      });
+    } catch (err) {
+      // agent 不可达：这次提问还没开始就结束了，预扣要退回，否则白扣粉丝一次额度（B02）
+      await chatSvc.releaseChat(session);
+      throw err;
+    }
 
     const started = Date.now();
-    const body = teeStream(upstream.body!, c.req.raw.signal, async (sniffer) => {
-      const done = sniffer.done;
-      if (!done?.answer) return; // 没跑完就没有回答可落，也不该扣额度
-      await chatSvc.settleChat(session, {
-        answer: done.answer,
-        chunkIds: sniffer.meta?.chunk_ids ?? [],
-        confidence: sniffer.meta?.confidence ?? null,
-        finishReason: done.finish_reason ?? "stop",
-        safety: done.safety ?? "pass",
-        promptTokens: done.prompt_tokens ?? 0,
-        completionTokens: done.completion_tokens ?? 0,
-        latencyMs: done.latency_ms ?? Date.now() - started,
-      });
-    });
+    // 怎么算账（落回答 / 按已消费计 / 退回预扣）见 chatSvc.finishChat
+    const body = teeStream(upstream.body!, c.req.raw.signal, (sniffer) =>
+      chatSvc.finishChat(session, sniffer, started),
+    );
 
     return new Response(body, {
       headers: {
