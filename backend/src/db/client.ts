@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql } from "drizzle-orm";
 import postgres from "postgres";
@@ -15,8 +16,29 @@ import { schema } from "./schema/index.js";
 let _sqlClient: postgres.Sql | undefined;
 let _db: ReturnType<typeof drizzle<typeof schema>> | undefined;
 
+/**
+ * 当前这条异步调用链是否已经在一个事务里（B04）。
+ *
+ * 事务里再开事务、或者绕过 tx 直接 getDb()，都会让一个请求同时占住两个连接。
+ * 池上限 10，postgres.js 取连接默认不超时 —— 10 个请求同时走到这一步，
+ * 每个都占着一个、等第二个，整个服务挂起，而且不报任何错。
+ * getChatExpert 就这样写过一次（M3）：30 个粉丝同时打开分享页即可复现。
+ *
+ * 光修掉那一处不够，下一个人还会再写出来。所以在唯一的入口上直接拦。
+ */
+const inTx = new AsyncLocalStorage<true>();
+
+function assertNotInTx() {
+  if (inTx.getStore()) {
+    throw new Error(
+      "禁止嵌套事务：事务里只能用传进来的 tx，不能再开事务，也不能调用 getDb()。见 db/client.ts。",
+    );
+  }
+}
+
 /** 惰性初始化 —— openapi 导出脚本会 import 本模块，但绝不能连库。 */
 export function getDb() {
+  assertNotInTx();
   if (!_db) {
     _sqlClient = postgres(env.DATABASE_URL_BACKEND, { max: 10 });
     _db = drizzle(_sqlClient, { schema });
@@ -51,7 +73,7 @@ export async function tenantTx<T>(
 ): Promise<T> {
   return getDb().transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_tenant', ${tenantId}, true)`);
-    return fn(tx);
+    return inTx.run(true, () => fn(tx));
   });
 }
 
@@ -61,5 +83,5 @@ export async function tenantTx<T>(
  * 受 RLS 保护的表在这里查会返回 0 行 —— 这是刻意的 fail-closed。
  */
 export async function systemTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
-  return getDb().transaction(fn);
+  return getDb().transaction((tx) => inTx.run(true, () => fn(tx)));
 }

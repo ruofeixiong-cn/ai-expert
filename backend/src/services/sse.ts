@@ -17,11 +17,19 @@ export type DoneData = {
 
 export type MetaData = { message_id?: string; confidence?: number; chunk_ids?: string[] };
 
-/** 边转发边解析。只关心 meta 与 done —— delta 太多，逐条解析纯属浪费。 */
+/**
+ * 边转发边解析。
+ *
+ * delta 也要解析（B02）：粉丝看到一部分回答后关掉页面，要把他看到的那部分落库、
+ * 并按已消费扣额度 —— 否则「看到九成再关页面」就能无限白嫖。
+ * 每帧只有十来个字，一次 JSON.parse 的开销和一次模型调用相比可以忽略。
+ */
 export class SseSniffer {
   private buffer = "";
   meta: MetaData | null = null;
   done: DoneData | null = null;
+  /** 已经转发给粉丝的增量文本 */
+  partial = "";
   errored = false;
 
   feed(text: string) {
@@ -48,6 +56,7 @@ export class SseSniffer {
     if (!event || !data) return;
     try {
       if (event === "meta") this.meta = JSON.parse(data) as MetaData;
+      else if (event === "delta") this.partial += (JSON.parse(data) as { text?: string }).text ?? "";
       else if (event === "done") this.done = JSON.parse(data) as DoneData;
       else if (event === "error") this.errored = true;
     } catch {

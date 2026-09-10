@@ -70,40 +70,40 @@ export async function login(
   const throttleKeys = [`account:${account}`, ...(meta.ip ? [`ip:${meta.ip}`] : [])];
   await assertNotThrottled(throttleKeys);
 
-  const identity = await systemTx(async (tx) => {
+  // 事务里只读数据；argon2 校验和失败计数都放在事务外面：
+  //   - 失败计数自己要开事务。第一版在 systemTx 里调它，一次登录失败同时占两个连接（B04），
+  //     撞库时并发一高就把连接池耗死 —— db/client.ts 的嵌套检测上线后当场抓到的
+  //   - argon2 故意很慢（几十毫秒），没必要在这段时间里占着数据库连接
+  const found = await systemTx(async (tx) => {
     const [user] = await tx
       .select()
       .from(users)
       .where(or(eq(users.email, account), eq(users.phone, account)))
       .limit(1);
-
-    // 账号不存在与密码错误返回同一个错误 —— 不泄露账号是否注册过
-    const fail = async () => {
-      await recordLoginFailure(throttleKeys);
-      return unauthorized("账号或密码不正确");
-    };
-    if (!user?.passwordHash) throw await fail();
-    if (!(await verify(user.passwordHash, password))) throw await fail();
+    if (!user) return null;
 
     const [tenant] = await tx
       .select()
       .from(tenants)
       .where(eq(tenants.ownerUserId, user.id))
       .limit(1);
-    if (!tenant) throw unauthorized("账号缺少关联租户，请联系支持");
-
-    return {
-      user: shape(user),
-      tenant: { id: tenant.id, name: tenant.name },
-      role: user.role === "creator" ? ("creator" as const) : ("user" as const),
-    };
+    return { user, tenant };
   });
 
+  // 账号不存在与密码错误返回同一个错误 —— 不泄露账号是否注册过
+  if (!found?.user.passwordHash || !(await verify(found.user.passwordHash, password))) {
+    await recordLoginFailure(throttleKeys);
+    throw unauthorized("账号或密码不正确");
+  }
+  const { user, tenant } = found;
+  if (!tenant) throw unauthorized("账号缺少关联租户，请联系支持");
+
   await clearLoginFailures(throttleKeys);
+  const role = user.role === "creator" ? ("creator" as const) : ("user" as const);
   return {
-    user: identity.user,
-    tenant: identity.tenant,
-    tokens: await createSession(identity.user.id, identity.tenant.id, identity.role, meta),
+    user: shape(user),
+    tenant: { id: tenant.id, name: tenant.name },
+    tokens: await createSession(user.id, tenant.id, role, meta),
   };
 }
 

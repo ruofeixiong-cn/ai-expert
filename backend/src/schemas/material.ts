@@ -7,6 +7,16 @@ export const SourceType = z.enum(["paste", "file", "url"]).openapi("SourceType",
 /** 单条素材的字数上限。超出在上传时就拒，避免向量化成本失控。 */
 export const MAX_MATERIAL_CHARS = 100_000;
 
+/** 单个文件上限，与 agent 的 extract.MAX_BYTES 一致。 */
+export const MAX_FILE_BYTES = 20 * 1024 * 1024;
+/**
+ * 上限文件对应的 base64 长度：每 3 字节变 4 个字符（含补位的 =）。
+ *
+ * 第一版 contentBase64 没有上限（B07）：几百 MB 的字符串先被 Node 读进内存，
+ * 再原样转给 agent 解码一遍，最后才被拒。在参数校验这一层就该拦下。
+ */
+export const MAX_FILE_BASE64_CHARS = Math.ceil(MAX_FILE_BYTES / 3) * 4;
+
 export const CreateMaterialInput = z
   .discriminatedUnion("sourceType", [
     z.object({
@@ -20,7 +30,7 @@ export const CreateMaterialInput = z
       filename: z.string().min(1).max(255),
       // M1 不接 OSS：文件在前端读成文本后直接传正文。
       // 二进制解析（docx/pdf）走 agent，见 specs/002-m1-ingestion/plan.md §2.1
-      contentBase64: z.string().min(1),
+      contentBase64: z.string().min(1).max(MAX_FILE_BASE64_CHARS, "文件超过 20MB 上限"),
     }),
     z.object({
       sourceType: z.literal("url"),

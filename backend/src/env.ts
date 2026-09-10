@@ -22,15 +22,21 @@ try {
   // 没有 .env 是正常的：CI 和容器里靠真实环境变量注入
 }
 
+/** 只为本地开箱即用的默认值。生产环境检测到它们就拒绝启动，见 assertProductionSecrets。 */
+export const DEV_DEFAULTS = {
+  JWT_SECRET: "dev_jwt_secret_change_me_in_prod",
+  INTERNAL_TOKEN: "dev_internal_token_change_me",
+  DB_PASSWORD: "backend_dev_pw",
+} as const;
+
 const Env = z.object({
   DATABASE_URL_BACKEND: z
     .string()
-    .default("postgres://app_backend:backend_dev_pw@localhost:5432/ai_expert"),
+    .default(`postgres://app_backend:${DEV_DEFAULTS.DB_PASSWORD}@localhost:5432/ai_expert`),
   AGENT_URL: z.string().default("http://localhost:8000"),
-  INTERNAL_TOKEN: z.string().default("dev_internal_token_change_me"),
+  INTERNAL_TOKEN: z.string().default(DEV_DEFAULTS.INTERNAL_TOKEN),
   BACKEND_PORT: z.coerce.number().default(8787),
-  // 生产环境必须覆盖。默认值只为让本地开箱即用。
-  JWT_SECRET: z.string().min(16).default("dev_jwt_secret_change_me_in_prod"),
+  JWT_SECRET: z.string().min(16).default(DEV_DEFAULTS.JWT_SECRET),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   /*
    * 分享链接 `/s/{slug}` 的对外地址。
@@ -45,4 +51,36 @@ const Env = z.object({
   PUBLIC_WEB_URL: z.string().default(""),
 });
 
+type EnvShape = z.infer<typeof Env>;
+
+/**
+ * 生产环境不许用开发默认值启动（B05）。
+ *
+ * JWT_SECRET 的默认值能通过 min(16)。部署时忘了配，服务照样起来、照样工作 ——
+ * 签名密钥就是写在仓库里的公开字符串，任何人都能伪造任何人的 token，
+ * 而且没有任何报错。所以让它在启动的那一刻失败。
+ *
+ * 一次列出全部问题：改一个报一个，部署要来回好几轮。
+ */
+export function assertProductionSecrets(
+  e: Pick<EnvShape, "NODE_ENV" | "JWT_SECRET" | "INTERNAL_TOKEN" | "DATABASE_URL_BACKEND">,
+) {
+  if (e.NODE_ENV !== "production") return;
+
+  const problems: string[] = [];
+  if (e.JWT_SECRET === DEV_DEFAULTS.JWT_SECRET || e.JWT_SECRET.length < 32) {
+    problems.push("JWT_SECRET（至少 32 位随机串）");
+  }
+  if (e.INTERNAL_TOKEN === DEV_DEFAULTS.INTERNAL_TOKEN || e.INTERNAL_TOKEN.length < 24) {
+    problems.push("INTERNAL_TOKEN（至少 24 位随机串，与 agent 一致）");
+  }
+  if (e.DATABASE_URL_BACKEND.includes(DEV_DEFAULTS.DB_PASSWORD)) {
+    problems.push("DATABASE_URL_BACKEND（仍是开发密码）");
+  }
+  if (problems.length > 0) {
+    throw new Error(`生产环境仍在使用开发默认值：${problems.join("；")}。请在部署环境里设置真实值。`);
+  }
+}
+
 export const env = Env.parse(process.env);
+assertProductionSecrets(env);
