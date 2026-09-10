@@ -204,13 +204,35 @@ async def _enqueue(
     from arq.connections import RedisSettings
     from sqlalchemy import insert
 
+    from datetime import timedelta
+
+    from sqlalchemy import func, update
+    from sqlalchemy.exc import IntegrityError
+
     from app.db.session import verified_tenant_conn
     from app.db.tables import build_jobs
+    from app.workers.build import (
+        ACTIVE_JOB_INDEX, ACTIVE_STATUSES, INTERRUPTED_ERROR, STALE_JOB_SECONDS,
+    )
 
     # backend 是可信内网调用方，但"可信"不等于"不会有 bug"。
     # 这里再用 experts 表核对一次 expert 是否真属于该租户。
     try:
         async with verified_tenant_conn(expert_id, tenant_id) as conn:
+            # 先回收这个专家卡死的任务（ADR-002）。同一个专家只能有一个进行中的任务，
+            # 一个永远停在 running 的任务会挡住后面所有的构建。
+            await conn.execute(
+                update(build_jobs)
+                .where(
+                    build_jobs.c.expert_id == expert_id,
+                    build_jobs.c.status.in_(ACTIVE_STATUSES),
+                    build_jobs.c.updated_at < func.now() - timedelta(seconds=STALE_JOB_SECONDS),
+                )
+                .values(
+                    status="failed", progress=0, stage=None,
+                    error=INTERRUPTED_ERROR, updated_at=func.now(),
+                )
+            )
             job_id = uuid4()
             await conn.execute(
                 insert(build_jobs).values(
@@ -220,6 +242,14 @@ async def _enqueue(
             )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        # 撞上部分唯一索引：这个专家已经有一个进行中的任务（B06）。
+        # 不用「先查有没有在跑」—— 那是 check-then-act，并发下两个都会过
+        if ACTIVE_JOB_INDEX in str(exc.orig):
+            raise HTTPException(
+                status_code=409, detail="这个专家正在构建中，等这一次结束再试。"
+            ) from exc
+        raise
 
     pool = await create_pool(RedisSettings.from_dsn(settings.REDIS_URL))
     try:
