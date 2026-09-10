@@ -13,3 +13,7 @@ coverage/
 
 # 第三方版权材料：本地参考用，不入库
 docs/reference/*.pdf
+
+# 评测快照：每次跑分的完整模型输出，几十 KB 起，且每台机器都不一样。
+# --diff 只需要本地有两份；真正要留档的结论写在 specs/006-m6-tuning/tasks.md。
+agent/eval/snapshots/*.json

@@ -10,6 +10,7 @@ import time
 from typing import AsyncIterator
 from uuid import UUID
 
+from app import obs
 from app.config import settings
 from app.pipeline import safety
 from app.pipeline.prompt import NO_CONTEXT_ANSWER, build_system, build_user
@@ -143,6 +144,24 @@ async def chat_stream(
         answer += verdict.note
         log.warning("出口闸门命中 %s expert=%s", verdict.reason, expert_id)
 
+    latency_ms = int((time.monotonic() - started) * 1000)
+
+    # 调 prompt 时最想看的是【当时那一版 prompt 的全文】，
+    # 光有 token 数看不出改动生效没有。
+    with obs.span("generate", expert_id=str(expert_id), message_id=str(message_id)) as sp:
+        sp.set(
+            question=question,
+            system=system,
+            user=user,
+            answer=answer,
+            chunk_ids=[str(h.chunk_id) for h in hits],
+            top_score=round(hits[0].score, 4),
+            prompt_tokens=usage[0],
+            completion_tokens=usage[1],
+            latency_ms=latency_ms,
+            safety="pass" if verdict.passed else "disclaimed",
+        )
+
     yield sse(
         "done",
         {
@@ -150,7 +169,7 @@ async def chat_stream(
             "safety": "pass" if verdict.passed else "disclaimed",
             "prompt_tokens": usage[0],
             "completion_tokens": usage[1],
-            "latency_ms": int((time.monotonic() - started) * 1000),
+            "latency_ms": latency_ms,
             # backend 要落库，不必自己再拼一遍增量
             "answer": answer,
         },

@@ -31,5 +31,13 @@ class Settings(BaseSettings):
     CHAT_PROVIDER: str = "auto"
     RERANK_PROVIDER: str = "auto"
 
+    # ── 可观测（Langfuse）─────────────────────────────────
+    # 默认关。观测组件不该有能力影响回答，也不该让测试因为它挂掉而变红。
+    # 打开：docker compose --profile obs up -d && uv sync --group obs
+    LANGFUSE_ENABLED: bool = False
+    LANGFUSE_HOST: str = "http://localhost:3000"
+    LANGFUSE_PUBLIC_KEY: str = ""
+    LANGFUSE_SECRET_KEY: str = ""
+
 
 settings = Settings()

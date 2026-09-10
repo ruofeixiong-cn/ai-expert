@@ -23,6 +23,15 @@ dependencies = [
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    # 黄金问答集用 YAML —— 它要人手写、要带注释解释每道题在测什么。
+    # JSON 没有注释，一份没有注释的评测集半年后没人知道当初为什么这么写。
+    "pyyaml>=6.0",
+]
+# 可观测是可选的：默认不装，也默认不开。
+#   uv sync --group obs && docker compose --profile obs up -d
+# 没装却打开了开关，app/obs.py 会记一条警告然后退回关闭 —— 不会让业务挂掉。
+obs = [
+    "langfuse>=2.53",
 ]
 
 [tool.pytest.ini_options]

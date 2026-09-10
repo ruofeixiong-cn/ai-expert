@@ -11,7 +11,7 @@ DOCKER_BIN := $(shell command -v docker 2>/dev/null \
                 || echo /Applications/Docker.app/Contents/Resources/bin/docker)
 DOCKER_DIR := $(shell dirname $(DOCKER_BIN))
 DOCKER := PATH="$(DOCKER_DIR):$$PATH" docker
-.PHONY: help install up down migrate dev worker health contract contract-check test e2e verify typecheck lint-db-access clean
+.PHONY: help install up down migrate dev worker health contract contract-check test e2e eval verify typecheck lint-db-access clean
 
 help: ## 显示所有命令
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -77,7 +77,16 @@ test: lint-db-access ## 跑单元与集成测试（需要 postgres 在跑）
 e2e: ## 端到端测试（自动起 agent + worker；需要 make up 已执行）
 	./scripts/e2e.sh
 
-verify: test e2e contract-check typecheck ## 提交前全量验证
+eval: ## 黄金问答集跑分（REAL_LLM=1 走真实模型；SWEEP=1 追加阈值扫描）
+	cd agent && uv run python scripts/eval.py $(if $(SWEEP),--sweep,)
+
+eval-diff: ## 对比最近两份评测快照
+	cd agent && uv run python scripts/eval.py --diff
+
+verify: test e2e eval contract-check typecheck ## 提交前全量验证
+# eval 进 verify 是刻意的：假实现下分数没有意义，但【流程必须跑通】——
+# 否则 eval.py 会慢慢腐烂成一个"只有想起来时才手动跑"的脚本，
+# 而那正是所有评测工具的死法。真实分数由 REAL_LLM=1 make eval 手动产出。
 
 clean: ## 清干净（含数据卷，会删数据）
 	$(DOCKER) compose down -v

@@ -64,6 +64,28 @@ LangChain / LlamaIndex 封装的正是我们要精确控制的 prompt 组装层�
 唯一例外：**Pydantic AI 只用在 `pipeline/extract_model.py`**（七维结构化提炼），
 不许侵入检索链路。三期做决策框架层时再评估 LangGraph。
 
+## 调参数之前先跑尺子
+
+`eval/` 是黄金问答集，`scripts/eval.py` 是跑分器。
+**任何影响检索质量的改动（切分参数、TOP_K、阈值、prompt、embedding 模型）
+都要在改动前后各跑一次真实分数**，把对照贴进 commit：
+
+```
+REAL_LLM=1 SWEEP=1 make eval    # 跑分 + 阈值曲线
+make eval-diff                   # 对比最近两份快照
+```
+
+黄金集的关键词组语义是**组内 AND、组间 OR**。同义词必须写成多个组 ——
+写成一个组等于要求答案同时说出所有说法，永远不可能通过。
+`tests/test_eval_harness.py` 会拦这个错误，因为它已经犯过一次，
+而且把「要点覆盖」读成了 35%，看上去像 prompt 很差。
+
+## 可观测
+
+`app/obs.py` 是 Langfuse 的薄封装，**默认关**。三条硬约束写在那个文件顶部：
+关着的时候不 import、装不上就退回关闭、埋点永远不抛。
+打开：`uv sync --group obs` + `docker compose --profile obs up -d` + `LANGFUSE_ENABLED=true`。
+
 ## 完成一个改动前
 
 ```

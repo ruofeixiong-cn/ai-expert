@@ -26,5 +26,45 @@ services:
       timeout: 3s
       retries: 20
 
+  # ── 可观测（默认不起）────────────────────────────────────────────────
+  #
+  # `make up` 不该因为一个观测组件而变慢、变重。要用时显式拉起来：
+  #   docker compose --profile obs up -d
+  #   cd agent && uv sync --group obs
+  #   然后在 .env 里 LANGFUSE_ENABLED=true + 填两个 key
+  #
+  # 单独一个数据库容器，不共用 ai_expert —— 观测数据和业务数据混在一个库里，
+  # 迁移、备份、容量都会互相牵连，而观测数据是可以随时丢的那一类。
+  langfuse-db:
+    image: postgres:16-alpine
+    profiles: ["obs"]
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse_dev_pw
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfusedata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  langfuse:
+    image: langfuse/langfuse:2
+    profiles: ["obs"]
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    ports: ["3000:3000"]
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse_dev_pw@langfuse-db:5432/langfuse
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: dev_nextauth_secret_change_me
+      SALT: dev_salt_change_me
+      # 自托管：内容不出本机，符合产品文档 §9.4 的隐私策略
+      TELEMETRY_ENABLED: "false"
+
 volumes:
   pgdata:
+  langfusedata:

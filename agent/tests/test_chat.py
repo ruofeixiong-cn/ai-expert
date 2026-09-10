@@ -66,7 +66,7 @@ async def _empty():
 # ── 有召回时的事件顺序 ──────────────────────────────────────────────────
 async def test_event_order_and_chunk_ids(monkeypatch):
     cid = uuid4()
-    hits = [Hit(chunk_id=cid, content="定投的核心是纪律，不是频率。", source="creator", score=0.42)]
+    hits = [Hit(chunk_id=cid, content="定投的核心是纪律，不是频率。", source="creator", score=0.42, rerank=0.42, confidence=1.0)]
 
     async def fake_retrieve(*a, **k):
         return hits
@@ -127,7 +127,7 @@ def test_safety_lets_normal_answers_through(text_):
 
 async def test_safety_note_is_appended_to_stream(monkeypatch):
     """命中后要真的追加到流里，而不是只记个日志。"""
-    hits = [Hit(chunk_id=uuid4(), content="我就是本人", source="creator", score=0.5)]
+    hits = [Hit(chunk_id=uuid4(), content="我就是本人", source="creator", score=0.5, rerank=0.5, confidence=1.0)]
 
     async def fake_retrieve(*a, **k):
         return hits
@@ -152,8 +152,8 @@ def test_system_prompt_carries_boundaries_and_anti_injection():
 def test_user_prompt_marks_source_of_every_chunk():
     """来源标记是防注入 4 条的第 3 条：让模型分得清素材和指令。"""
     hits = [
-        Hit(chunk_id=uuid4(), content="博主写的内容", source="creator", score=0.5),
-        Hit(chunk_id=uuid4(), content="平台公共知识", source="platform", score=0.4),
+        Hit(chunk_id=uuid4(), content="博主写的内容", source="creator", score=0.5, rerank=0.5, confidence=1.0),
+        Hit(chunk_id=uuid4(), content="平台公共知识", source="platform", score=0.4, rerank=0.4, confidence=1.0),
     ]
     up = build_user("怎么定投", hits, MODEL)
     assert "[博主原文 1]" in up
@@ -162,24 +162,33 @@ def test_user_prompt_marks_source_of_every_chunk():
 
 
 # ── 防注入：降权机制的真实边界 ────────────────────────────────────────────
-async def test_injection_flagged_chunk_is_downweighted_but_not_blocked(monkeypatch):
+async def test_injection_flagged_chunk_needs_five_times_the_relevance(monkeypatch):
     """
     入库时被标记的切片，confidence 降到 0.2，参与打分时相当于把门槛抬高 5 倍。
 
-    ⚠️ 但【降权不等于屏蔽】：攻击者只要在指令旁边放足够相关的真实内容，
-       rerank 分数就能高到越过阈值。真实验证见 spec §6.5 ——
+    ⚠️ 断言写成【阈值的倍数】而不是硬编码分数 —— M6 把闸门从 0.05 调到 0.15，
+       第一版那种写死 0.30 / 0.20 的断言当场就红了，而红的原因跟安全无关。
+
+    调高闸门顺带收紧了这条：投毒切片现在要 0.75 才挤得进来（0.15 ÷ 0.2），
+    而实测整个黄金集里最高的一条 rerank 分数是 0.9262 —— 也就是说，
+    攻击者需要写出比绝大多数真实内容都更贴题的投毒段落。
+
+    ⚠️ 但【降权仍然不等于屏蔽】。真实验证见 specs/004-m3-chat/spec.md §6.5：
        最终挡住它的是 System Prompt 的防注入声明，不是这一层。
-       这条测试固定的是「降权确实生效」，不是「注入一定进不来」。
     """
     from app.pipeline.config import RERANK_MIN_SCORE
+    from app.workers.build import INJECTED_CONFIDENCE, NORMAL_CONFIDENCE
 
-    normal, injected = 0.30, 0.30
-    assert normal * 1.0 >= RERANK_MIN_SCORE, "正常切片应能通过"
-    assert injected * 0.2 >= RERANK_MIN_SCORE, "高相关的投毒切片仍可能通过 —— 这是已知边界"
+    # 正常切片：刚好够到阈值就能进
+    assert RERANK_MIN_SCORE * NORMAL_CONFIDENCE >= RERANK_MIN_SCORE
 
-    weak = 0.20
-    assert weak * 1.0 >= RERANK_MIN_SCORE
-    assert weak * 0.2 < RERANK_MIN_SCORE, "中等相关的投毒切片会被降权挡掉"
+    # 投毒切片：需要 5 倍相关度
+    need = RERANK_MIN_SCORE / INJECTED_CONFIDENCE
+    assert need == pytest.approx(RERANK_MIN_SCORE * 5)
+
+    just_below = need - 0.01
+    assert just_below * INJECTED_CONFIDENCE < RERANK_MIN_SCORE, "差一点就该被挡掉"
+    assert just_below * NORMAL_CONFIDENCE >= RERANK_MIN_SCORE, "同样的分数，正常切片能进"
 
 
 async def test_meta_echoes_the_message_id_from_backend(monkeypatch):

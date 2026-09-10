@@ -93,13 +93,16 @@ make help            # 列出全部命令
 make dev             # 起全部服务
 make test            # 单元 + 集成测试（需要 make up）
 make e2e             # 跨服务端到端（自动起 agent + worker）
-make verify          # 提交前一把梭：test + e2e + contract-check + typecheck
+make eval            # 黄金问答集跑分（SWEEP=1 追加阈值扫描）
+make verify          # 提交前一把梭：test + e2e + eval + contract-check + typecheck
 make contract        # 重新生成两份 OpenAPI 与 TS 类型
 make down            # 停掉基础设施（保留数据）
 make clean           # 清干净（含数据卷，会删数据）
 ```
 
 `REAL_LLM=1 make e2e` 会用真实的百炼模型跑端到端；默认用假实现（快、免费、确定性）。
+`REAL_LLM=1 SWEEP=1 make eval` 跑真实分数并输出阈值曲线 —— 调参数前后各跑一次，
+用 `make eval-diff` 看哪几道题的结论变了。
 
 ---
 
@@ -171,10 +174,10 @@ materials           SELECT
 | **M2** 七维模型 | AI 提炼专家模型、分块确认、上线分享 | ✅ |
 | **M3** 对话 | 知识召回、双闸门、SSE 流式、免登录分享页 | ✅ |
 | **M4** 反馈与看板 | 点赞点踩、疑似盲区、Creator 最小看板 | ✅ |
-| **M5** 付费 | credits 账本、兑换码、微信支付 | 下一步 |
-| **M6** 调优 | 黄金问答集、Langfuse 可观测 | |
+| **M5** 付费 | credits 账本、兑换码、微信支付 | 暂缓（等备案） |
+| **M6** 调优 | 黄金问答集、阈值校准、Langfuse 可观测 | ✅ |
 
-测试：backend 64 + agent 56 + 端到端 15。
+测试：backend 64 + agent 72 + 端到端 15，外加 29 道黄金问答集。
 
 每个里程碑的验收标准与实现记录在 `specs/` 下，包括**做的时候踩到的坑**
 —— 那部分往往比代码本身更值得看。
