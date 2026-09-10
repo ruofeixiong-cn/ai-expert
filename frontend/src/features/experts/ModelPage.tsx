@@ -11,6 +11,7 @@ export default function ModelPage() {
   const { id = "" } = useParams();
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [published, setPublished] = useState<{ shareUrl: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -41,8 +42,11 @@ export default function ModelPage() {
       if (error || !data) throw error;
       return data.data;
     },
-    onSuccess: (d) => { setError(null); qc.setQueryData(["model", id], d); },
-    onError: (e) => setError(errorMessage(e)),
+    // 失败由卡片自己就近显示并保留博主的编辑（F03），这里不再往页面底部报
+    onSuccess: (d) => {
+      setNotice(null); // 有了新的未上线修改，「线上已更新」不再成立
+      qc.setQueryData(["model", id], d);
+    },
   });
 
   const regenerate = useMutation({
@@ -144,8 +148,7 @@ export default function ModelPage() {
             dim={d.key}
             items={effective[d.key] as AnyItem[]}
             confirmed={m.confirmedDimensions.includes(d.key)}
-            busy={confirm.isPending && confirm.variables?.dim === d.key}
-            onConfirm={(items) => confirm.mutate({ dim: d.key, items })}
+            onConfirm={(items) => confirm.mutateAsync({ dim: d.key, items })}
           />
         ))}
       </div>
@@ -176,9 +179,32 @@ export default function ModelPage() {
                 <Copy className="size-4" /> {copied ? "已复制" : "复制"}
               </Button>
             </div>
-            <p className="mt-3 text-xs text-ink-400">
-              上线的是当前这一版。之后你改草稿不会影响粉丝看到的内容，改完再点一次上线才生效。
-            </p>
+
+            {/*
+              F01：第一版在这里只有链接、没有按钮 —— 上线之后的修改永远到不了粉丝那里，
+              而这一段的文案一直在让博主「改完再点一次上线」。
+              publish 接口本身支持重复调用：短链不变，只更新线上快照。
+            */}
+            <div className="mt-3 flex items-center justify-between gap-4">
+              <p className="text-xs text-ink-400">
+                粉丝用的是你上一次上线时的版本。之后的修改不会自动生效，改完点右边的按钮推到线上。
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                loading={publish.isPending}
+                disabled={boundariesEmpty}
+                onClick={() =>
+                  publish.mutate(undefined, {
+                    onSuccess: () => setNotice("线上已更新为当前版本，粉丝下一次提问就会用上。"),
+                  })
+                }
+              >
+                <Rocket className="size-4" /> 更新线上版本
+              </Button>
+            </div>
+            {notice && <div className="mt-3"><Alert tone="success">{notice}</Alert></div>}
           </div>
         ) : (
           <div className="flex items-center justify-between gap-4">

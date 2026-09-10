@@ -1,24 +1,16 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { BrowserRouter, Navigate, Outlet, Route, Routes, Link } from "react-router";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { LogOut } from "lucide-react";
 import { getAccessToken, logout, restoreSession, subscribe } from "@/lib/auth";
+// 登录态丢失时清空缓存的逻辑挂在这个模块里，见 lib/queryClient.ts
+import { queryClient as qc } from "@/lib/queryClient";
 import { Button, Spinner } from "@/components/ui";
 import LoginPage from "@/features/auth/LoginPage";
 import ExpertListPage from "@/features/experts/ExpertListPage";
 import ExpertDetailPage from "@/features/experts/ExpertDetailPage";
 import ModelPage from "@/features/experts/ModelPage";
 import SharePage from "@/features/chat/SharePage";
-
-const qc = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,            // 401 已由 api client 自动刷新重试，这里不必再叠
-      staleTime: 10_000,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
 
 const useAuthed = () => useSyncExternalStore(subscribe, () => getAccessToken() !== null);
 

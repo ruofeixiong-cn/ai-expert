@@ -62,6 +62,29 @@ export const BOUNDARY_KIND_LABEL: Record<string, string> = {
 export const isEvidenceless = (item: AnyItem) =>
   "evidenceChunkIds" in item && item.evidenceChunkIds.length === 0;
 
+/**
+ * 提交前按契约的约束先查一遍，别让博主等一个必然的 400（F03）。
+ * 返回第一条问题的中文说明；没有问题返回 null。
+ *
+ * ⚠️ 这里是手抄契约里的 `min(1)`：ModelItem / BoundaryItem 的 content 非空，
+ *    ExampleItem 的 question / answer 非空且 evidenceChunkIds 至少一条。
+ *    等契约能生成 zod 约束（回顾文档 §6.3），改成直接用生成的 schema ——
+ *    手抄的约束迟早会和后端对不上。
+ */
+export function validateItems(dim: Dim, items: AnyItem[]): string | null {
+  for (const [i, it] of items.entries()) {
+    const n = i + 1;
+    if (dim === "examples") {
+      const e = it as ExampleItem;
+      if (!e.question.trim() || !e.answer.trim()) return `第 ${n} 条的问题或回答还没填`;
+      if (e.evidenceChunkIds.length === 0) return `第 ${n} 条没有原文出处。样本只能从原文抽取，请删掉它`;
+    } else if (!(it as { content: string }).content.trim()) {
+      return `第 ${n} 条还没填内容，填上或删掉再确认`;
+    }
+  }
+  return null;
+}
+
 export function emptyItem(dim: Dim): AnyItem {
   if (dim === "boundaries") return { content: "", kind: "out_of_scope" };
   if (dim === "examples") return { question: "", answer: "", evidenceChunkIds: [] };

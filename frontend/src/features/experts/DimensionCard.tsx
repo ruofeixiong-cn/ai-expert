@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Check, ChevronDown, Plus, Trash2 } from "lucide-react";
-import { Button, Card, Input, Textarea } from "@/components/ui";
+import { errorMessage } from "@/api/client";
+import { Alert, Button, Card, Input, Textarea } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import {
-  BOUNDARY_KIND_LABEL, DIMENSIONS, emptyItem, isEvidenceless,
+  BOUNDARY_KIND_LABEL, DIMENSIONS, emptyItem, isEvidenceless, validateItems,
   type AnyItem, type Dim,
 } from "./dimensions";
 
@@ -16,19 +17,21 @@ const ATTENTION: Record<string, { label: string; cls: string; open: boolean }> =
 };
 
 export function DimensionCard({
-  dim, items, confirmed, busy, onConfirm,
+  dim, items, confirmed, onConfirm,
 }: {
   dim: Dim;
   items: AnyItem[];
   confirmed: boolean;
-  busy: boolean;
-  onConfirm: (items: AnyItem[]) => void;
+  /** 返回的 Promise 失败时，博主的编辑原样保留 */
+  onConfirm: (items: AnyItem[]) => Promise<unknown>;
 }) {
   const meta = DIMENSIONS.find((d) => d.key === dim)!;
   const attn = ATTENTION[meta.attention]!;
   const [open, setOpen] = useState(attn.open);
   const [draft, setDraft] = useState<AnyItem[]>(items);
   const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // 服务端数据变了（比如重新生成草稿）就同步过来，但别覆盖博主正在改的内容
   useEffect(() => {
@@ -37,12 +40,41 @@ export function DimensionCard({
 
   const flagged = draft.filter(isEvidenceless).length;
 
-  const patch = (i: number, next: Partial<AnyItem>) => {
+  const edit = (next: (d: AnyItem[]) => AnyItem[]) => {
     setDirty(true);
-    setDraft((d) => d.map((it, idx) => (idx === i ? ({ ...it, ...next } as AnyItem) : it)));
+    setError(null);
+    setDraft(next);
   };
-  const remove = (i: number) => { setDirty(true); setDraft((d) => d.filter((_, idx) => idx !== i)); };
-  const add = () => { setDirty(true); setOpen(true); setDraft((d) => [...d, emptyItem(dim)]); };
+  const patch = (i: number, next: Partial<AnyItem>) =>
+    edit((d) => d.map((it, idx) => (idx === i ? ({ ...it, ...next } as AnyItem) : it)));
+  const remove = (i: number) => edit((d) => d.filter((_, idx) => idx !== i));
+  const add = () => { setOpen(true); edit((d) => [...d, emptyItem(dim)]); };
+
+  /**
+   * 请求成功之后才清 dirty（F03）。
+   *
+   * 第一版是 `onConfirm(draft); setDirty(false)` —— 请求还没回来 dirty 就清了，
+   * 上面的 effect 立刻把草稿换回服务端的旧数据：请求中编辑内容闪回旧版，
+   * 请求失败则永久丢失。而契约要求内容非空、样本必须有出处，
+   * 博主加了一条还没填的空条目就必然 400，整张卡片的编辑随之消失。
+   *
+   * 所以：先按契约约束查一遍，不合格就不发；发了就等结果，失败时一个字都不动。
+   */
+  async function confirm() {
+    const problem = validateItems(dim, draft);
+    if (problem) return setError(problem);
+
+    setError(null);
+    setSaving(true);
+    try {
+      await onConfirm(draft);
+      setDirty(false);
+    } catch (e) {
+      setError(errorMessage(e, "没保存成功，你的修改还在，稍后再点一次确认"));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <Card className={cn("overflow-hidden", confirmed && "border-emerald-200")}>
@@ -98,15 +130,25 @@ export function DimensionCard({
             ))}
           </div>
 
-          <div className="mt-4 flex items-center justify-between">
-            <Button variant="ghost" size="sm" type="button" onClick={add}>
-              <Plus className="size-4" /> 添加一条
-            </Button>
+          {/* 错误就近显示在这张卡片里 —— 以前报在页面最底部，博主点完确认根本看不见 */}
+          {error && <div className="mt-3"><Alert>{error}</Alert></div>}
+
+          <div className="mt-4 flex items-center justify-between gap-3">
+            {dim === "examples" ? (
+              // 契约要求样本至少有一条原文出处（ExampleItem.evidenceChunkIds.min(1)），
+              // 手动加的必然没有 —— 给按钮只会让博主填完再撞一个 400。
+              // 等 ADR-003 的来源字段落地后再放开。
+              <span className="text-xs text-ink-400">样本只从你的原文里抽取，暂不支持手动添加</span>
+            ) : (
+              <Button variant="ghost" size="sm" type="button" onClick={add}>
+                <Plus className="size-4" /> 添加一条
+              </Button>
+            )}
             <Button
               size="sm"
               type="button"
-              loading={busy}
-              onClick={() => { onConfirm(draft); setDirty(false); }}
+              loading={saving}
+              onClick={() => void confirm()}
               variant={confirmed && !dirty ? "outline" : "primary"}
             >
               {confirmed && !dirty ? "已确认" : "确认这一块"}
@@ -172,6 +214,9 @@ function ItemRow({
            *
            * 所以不能只是标个色 —— 要明说【原文里找不到出处】，
            * 让博主知道该盯哪一条，也让他知道我们没有拿他的名义瞎编。
+           *
+           * ⚠️ 已知误判：博主手动添加的条目也没有出处，会被误标成 AI 推断。
+           *    契约里没有区分来源的字段，等 backend 补齐，见 docs/adr/003。
            */
           <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
             <AlertTriangle className="size-3.5" />
