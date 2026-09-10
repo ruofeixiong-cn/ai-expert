@@ -86,6 +86,23 @@ make eval-diff                   # 对比最近两份快照
 关着的时候不 import、装不上就退回关闭、埋点永远不抛。
 打开：`uv sync --group obs` + `docker compose --profile obs up -d` + `LANGFUSE_ENABLED=true`。
 
+## 抓外部链接：SSRF 防护
+
+`pipeline/extract.py` 的 `from_url` 是 agent 唯一一处「由用户决定访问哪个地址」的代码。
+agent 跑在云主机上，同一个网络里有元数据服务（阿里云 `100.100.100.200`）、Redis、Postgres。
+四道关写在那个文件里，**任何改动都不许绕开 `_pin()`**：
+
+1. 只允许 http / https，只允许 80 / 443 端口
+2. 解析出的**每一个**地址都必须是公网地址
+3. 连接钉死到校验过的 IP（防 DNS rebinding），Host 头与 TLS 的 SNI 仍用原域名
+4. 不自动跟随跳转，每一跳重新校验；响应体流式读取、有上限
+
+本机开着代理 fake-ip 模式时，所有域名都解析到 `198.18.0.0/15`，会被全部拦下 ——
+在 `.env` 里设 `FETCH_TRUSTED_CIDRS=198.18.0.0/15`。生产环境设了它，agent 会拒绝启动。
+
+同步的 CPU 活（pymupdf、python-docx、trafilatura）一律放进 `asyncio.to_thread`，
+不许直接在 async 函数里跑 —— 那会卡住同一进程里所有粉丝的对话流。
+
 ## 完成一个改动前
 
 ```
