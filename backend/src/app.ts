@@ -318,14 +318,11 @@ export function createApp() {
 
   app.openapi(R.publishRoute, async (c) => {
     const url = new URL(c.req.url);
+    // 本地开发时 /s/:slug 由 Vite 提供，不在 backend 上 —— 没配 PUBLIC_WEB_URL
+    // 的话，上线拿到的分享链接会是一个 404，而接口返回 200、数据全对。
+    const base = env.PUBLIC_WEB_URL || `${url.protocol}//${url.host}`;
     return c.json(
-      ok(
-        await modelSvc.publish(
-          c.get("auth").tenantId,
-          c.req.valid("param").id,
-          `${url.protocol}//${url.host}`,
-        ),
-      ),
+      ok(await modelSvc.publish(c.get("auth").tenantId, c.req.valid("param").id, base)),
     );
   });
 

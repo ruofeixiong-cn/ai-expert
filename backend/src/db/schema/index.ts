@@ -297,7 +297,8 @@ export const messages = pgTable(
     chunkIds: uuid("chunk_ids").array().notNull().default([]),
     // 本次召回的最高 rerank 分数。低置信度 + 负反馈 = 疑似盲区（M4）。
     confidence: doublePrecision("confidence"),
-    // 'stop' | 'no_context' | 'length' | 'error'
+    // 'stop' | 'no_context' | 'identity' | 'length' | 'error'
+    // 'identity' = 身份提问（「你是真人吗」），召回之前就答掉了，没调模型。
     finishReason: text("finish_reason"),
     // 出口闸门结论：'pass' | 'disclaimed'
     safety: text("safety"),

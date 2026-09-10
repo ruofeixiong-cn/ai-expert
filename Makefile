@@ -11,7 +11,7 @@ DOCKER_BIN := $(shell command -v docker 2>/dev/null \
                 || echo /Applications/Docker.app/Contents/Resources/bin/docker)
 DOCKER_DIR := $(shell dirname $(DOCKER_BIN))
 DOCKER := PATH="$(DOCKER_DIR):$$PATH" docker
-.PHONY: help install up down migrate dev worker health contract contract-check test e2e eval verify typecheck lint-db-access clean
+.PHONY: help install up down migrate dev worker health contract contract-check test e2e eval seed verify typecheck lint-db-access clean
 
 help: ## 显示所有命令
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -76,6 +76,9 @@ test: lint-db-access ## 跑单元与集成测试（需要 postgres 在跑）
 
 e2e: ## 端到端测试（自动起 agent + worker；需要 make up 已执行）
 	./scripts/e2e.sh
+
+seed: ## 灌入本地体验用的演示数据（需要 make dev 已在跑）
+	node scripts/seed-demo.mjs $(SEED_ARGS)
 
 eval: ## 黄金问答集跑分（REAL_LLM=1 走真实模型；SWEEP=1 追加阈值扫描）
 	cd agent && uv run python scripts/eval.py $(if $(SWEEP),--sweep,)

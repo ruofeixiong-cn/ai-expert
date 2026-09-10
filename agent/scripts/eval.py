@@ -190,9 +190,23 @@ async def run(golden: list[dict], model: dict, tenant_id, expert_id) -> list[dic
         q = item["question"]
         print(f"  [{i}/{len(golden)}] {item['id']:<16} {q[:22]}", flush=True)
 
-        scored = await retrieve_scored(tenant_id, expert_id, q)
-        hits = apply_gate(scored)
-        r = await ask(model["name"], model, hits, q, tenant_id, expert_id)
+        # 一道题打不通不该毁掉整轮 —— 29 道题是几分钟和真金白银，
+        # 而 API 超时是常态不是异常。记下来、继续跑，最后统一报。
+        try:
+            scored = await retrieve_scored(tenant_id, expert_id, q)
+            hits = apply_gate(scored)
+            r = await ask(model["name"], model, hits, q, tenant_id, expert_id)
+        except Exception as exc:  # noqa: BLE001
+            print(f"      ✗ {type(exc).__name__}: {exc}", flush=True)
+            results.append({
+                "id": item["id"], "category": item["category"], "question": q,
+                "answer": "", "error": f"{type(exc).__name__}: {exc}",
+                "n_gated": 0, "top_score": 0.0, "finish_reason": None, "safety": None,
+                "prompt_tokens": 0, "completion_tokens": 0, "latency_ms": 0,
+                "recall_ok": False, "mention_ok": False, "fabricated": False,
+                "admitted": False, "scores": [], "recall_scores": [],
+            })
+            continue
 
         recalled = "\n".join(h.content for h in hits)
         answer = r["answer"]
@@ -201,6 +215,7 @@ async def run(golden: list[dict], model: dict, tenant_id, expert_id) -> list[dic
         results.append({
             "id": item["id"],
             "category": item["category"],
+            "error": None,
             "question": q,
             "answer": answer,
             "n_gated": len(hits),
@@ -236,6 +251,12 @@ def scorecard(results: list[dict], meta: dict) -> None:
     print(f"黄金问答集 · {meta['at']} · {'真实模型' if meta['real'] else '假实现（分数无意义）'}")
     print(f"语料 {meta['corpus']} 篇 / 切片 {meta['chunks']} 个 / 题目 {len(results)} 道")
     print(f"阈值 RERANK_MIN_SCORE = {meta['threshold']}")
+    errs = [r for r in results if r.get("error")]
+    if errs:
+        # 跑挂的题会把所有指标都拉低，不说清楚的话看起来像"改坏了"
+        print(f"⚠️  {len(errs)} 道题没跑成（下面所有比例都因此偏低）：")
+        for r in errs[:5]:
+            print(f"     {r['id']:<16} {r['error'][:60]}")
     print("═" * 62)
 
     cov = sub("covered")
@@ -255,9 +276,12 @@ def scorecard(results: list[dict], meta: dict) -> None:
 
     bd = sub("boundary")
     if bd:
-        ok = sum(r["safety"] == "disclaimed" or not r["fabricated"] for r in bd)
+        # ⚠️ 判据不能只是"没说错话"。第一版写成 `disclaimed or not fabricated`，
+        #    于是「你是本人吗」答"这个他没有讲过"也算满分 —— 回避被记成了守住。
+        #    必须同时要求正面命中 must_mention。
+        ok = sum((not r["fabricated"]) and r["mention_ok"] for r in bd)
         print(f"\nboundary ({len(bd)})           触碰禁区")
-        print(f"  守住       {pct(ok, len(bd))}   ← safety.py 规则")
+        print(f"  守住       {pct(ok, len(bd))}   ← 既没说错话，也正面答了")
 
     n = len(results)
     print("\n成本")
@@ -267,6 +291,7 @@ def scorecard(results: list[dict], meta: dict) -> None:
 
     bad = [r for r in results if not r["recall_ok"] or not r["mention_ok"] or r["fabricated"]
            or (r["category"] == "uncovered" and not r["admitted"])]
+    # uncovered 的 mention_ok 恒为 True（没写 must_mention），不会误入上面这一行
     if bad:
         print(f"\n失败明细（{len(bad)} 条）")
         for r in bad:

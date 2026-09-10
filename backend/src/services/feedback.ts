@@ -51,7 +51,12 @@ export const BLINDSPOT_CONFIDENCE = 0.15;
  *
  * ⚠️ 表别名固定为 `m`（messages）。用它的查询必须用同一个别名。
  */
-const IS_BLINDSPOT = sql`coalesce(m.confidence, 0) < ${BLINDSPOT_CONFIDENCE}`;
+const IS_BLINDSPOT = sql`(
+  coalesce(m.confidence, 0) < ${BLINDSPOT_CONFIDENCE}
+  -- 身份提问（「你是真人吗」）也是 confidence 0，但它不是知识缺口 ——
+  -- 它在召回之前就被答掉了，博主不需要为此去补一篇文章。
+  AND m.finish_reason IS DISTINCT FROM 'identity'
+)`;
 
 // ─── 粉丝：点赞 / 点踩 ───────────────────────────────────────────────────────
 

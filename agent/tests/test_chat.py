@@ -135,7 +135,11 @@ async def test_safety_note_is_appended_to_stream(monkeypatch):
     monkeypatch.setattr(gen, "retrieve", fake_retrieve)
     monkeypatch.setattr("app.config.settings.CHAT_PROVIDER", "fake")
 
-    body = "".join(await _collect(gen.chat_stream(uuid4(), uuid4(), "老王", MODEL, "你是本人吗", uuid4())))
+    # 刻意【不用】"你是本人吗" —— 那句话现在在召回之前就被身份分支答掉了，
+    # 根本走不到出口闸门。这条测的是【模型输出】里的冒充措辞被拦下并追加免责。
+    body = "".join(
+        await _collect(gen.chat_stream(uuid4(), uuid4(), "老王", MODEL, "定投要注意什么", uuid4()))
+    )
     assert "不是他本人" in body
     assert '"safety": "disclaimed"' in body
 
@@ -204,3 +208,41 @@ async def test_meta_echoes_the_message_id_from_backend(monkeypatch):
     mid = uuid4()
     raw = await _collect(gen.chat_stream(uuid4(), uuid4(), "老王", MODEL, "随便问", mid))
     assert f'"message_id": "{mid}"' in "".join(raw)
+
+
+# ── 身份提问 ────────────────────────────────────────────────────────────────
+async def test_identity_question_is_answered_before_retrieval(monkeypatch):
+    """
+    「你是真人吗」在知识库里必然召回为空 —— 没有博主会写文章讲"我是不是 AI"。
+    第一版因此掉进"这个他没有讲过"分支：粉丝问一句该正面回答的问题，得到一句回避。
+
+    而"不冒充本人"是产品文档 §7.2 的第一条合规底线。
+    底线不该靠"刚好没说错话"来守 —— 出口闸门确实拦不到"回避"。
+    """
+    called = False
+
+    async def boom(*a, **k):
+        nonlocal called
+        called = True
+        return []
+
+    monkeypatch.setattr(gen, "retrieve", boom)
+
+    raw = await _collect(gen.chat_stream(uuid4(), uuid4(), "定投老王", MODEL, "你是本人吗", uuid4()))
+    body = "".join(raw)
+
+    assert called is False, "身份提问不该走召回 —— 白花一次 embedding 的钱"
+    assert "不是定投老王本人" in body
+    assert "AI" in body
+    assert '"finish_reason": "identity"' in body
+    assert '"prompt_tokens": 0' in body
+
+
+async def test_normal_question_still_goes_through_retrieval(monkeypatch):
+    """身份识别的正则不能误伤「你是怎么选基金的」这类正常提问。"""
+    monkeypatch.setattr(gen, "retrieve", lambda *a, **k: _empty())
+
+    raw = await _collect(
+        gen.chat_stream(uuid4(), uuid4(), "定投老王", MODEL, "你是怎么选基金的", uuid4())
+    )
+    assert '"finish_reason": "no_context"' in "".join(raw)

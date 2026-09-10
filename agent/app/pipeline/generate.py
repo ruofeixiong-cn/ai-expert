@@ -13,7 +13,13 @@ from uuid import UUID
 from app import obs
 from app.config import settings
 from app.pipeline import safety
-from app.pipeline.prompt import NO_CONTEXT_ANSWER, build_system, build_user
+from app.pipeline.prompt import (
+    NO_CONTEXT_ANSWER,
+    build_system,
+    build_user,
+    identity_answer,
+    is_identity_question,
+)
 from app.pipeline.retrieve import Hit, retrieve
 
 log = logging.getLogger(__name__)
@@ -77,6 +83,29 @@ async def chat_stream(
     message_id: UUID,
 ) -> AsyncIterator[str]:
     started = time.monotonic()
+
+    # ── 身份提问：在召回之前就答掉 ──
+    #
+    # 「你是真人吗」在知识库里必然召回为空，会掉进"这个他没有讲过"的分支 ——
+    # 粉丝问一句该正面回答的问题，得到一句回避。而"不冒充本人"是合规底线，
+    # 底线不该靠"刚好没说错话"来守。确定性回答，一次模型都不调。
+    if is_identity_question(question):
+        answer = identity_answer(expert_name)
+        yield sse("meta", {"message_id": str(message_id), "confidence": 0.0, "chunk_ids": []})
+        for i in range(0, len(answer), 12):
+            yield sse("delta", {"text": answer[i : i + 12]})
+        yield sse(
+            "done",
+            {
+                "finish_reason": "identity",
+                "safety": "pass",
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "latency_ms": int((time.monotonic() - started) * 1000),
+                "answer": answer,
+            },
+        )
+        return
 
     try:
         hits = await retrieve(tenant_id, expert_id, question)

@@ -9,6 +9,7 @@ Prompt 组装（产品文档 §6.4：不要把人格全塞进 System Prompt）�
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.pipeline.retrieve import Hit
@@ -20,6 +21,38 @@ NO_CONTEXT_ANSWER = (
     "为了不替他编造观点，这里就不展开了 —— 你可以换个角度问，"
     "或者问一些他写过的话题。"
 )
+
+
+# ── 身份提问 ─────────────────────────────────────────────────────────────────
+#
+# 「你是真人吗」是分享页上最容易被问到的问题之一，而它在知识库里【必然】召回为空 ——
+# 没有哪个博主会写一篇文章讲"我是不是 AI"。于是它走进"这个他没有讲过"的分支，
+# 粉丝问「你是本人吗」，得到「这个问题他没有讲过」。
+#
+# 那不算冒充（出口闸门也确实拦不到什么），但它**回避了一个应当正面回答的问题** ——
+# 而"不冒充本人"是产品文档 §7.2 的第一条合规底线，底线不该靠"刚好没说错话"来守。
+#
+# 所以在召回之前就拦下来，给一个确定的回答：不调模型、不花钱、每次都一样。
+_IDENTITY_Q = (
+    re.compile(r"你(是|是不是|到底是)\s*(真人|本人|真的人|机器人|AI|ai|人工智能)"),
+    re.compile(r"(真人|本人|人)还是\s*(AI|ai|机器人|人工智能)"),
+    re.compile(r"(AI|ai|机器人|人工智能)还是\s*(真人|本人|人)"),
+    re.compile(r"^你是谁"),
+    re.compile(r"跟我(说话|聊天)的是(谁|真人|本人)"),
+)
+
+
+def is_identity_question(question: str) -> bool:
+    q = question.strip()
+    return any(p.search(q) for p in _IDENTITY_Q)
+
+
+def identity_answer(expert_name: str) -> str:
+    return (
+        f"我不是{expert_name}本人，是基于他公开发表的内容做的 AI 专家。\n\n"
+        "我只转述他写过的东西，他没讲过的我不会替他编。"
+        "想找他本人的话，还是要通过他自己的渠道。"
+    )
 
 
 def _bullets(items: list[dict[str, Any]], limit: int = 8) -> str:

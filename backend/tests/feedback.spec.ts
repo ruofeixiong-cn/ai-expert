@@ -275,6 +275,24 @@ describe("Creator 最小看板", () => {
     expect(s.downVotes).toBe(0); // 一次都没点
   });
 
+  it("身份提问不算盲区（「你是真人吗」不是知识缺口）", async () => {
+    const e = await publishedExpert();
+    const fan = await newFan(e.slug);
+    // 身份提问在召回之前就被答掉了，confidence 是 0 —— 跟"库里没料"长得一模一样
+    await seedTurn(e, fan.id, "你是本人吗，还是一个 AI", {
+      confidence: null, finishReason: "identity",
+    });
+    await seedTurn(e, fan.id, "港股打新怎么操作", {
+      confidence: null, finishReason: "no_context",
+    });
+
+    const s = await stats(e);
+    expect(s.answers).toBe(2);
+    // 只有后者算盲区 —— 博主不需要为"你是不是 AI"去补一篇文章
+    expect(s.blindspots).toBe(1);
+    expect(s.recentBlindspots[0].question).toBe("港股打新怎么操作");
+  });
+
   // ★ F9
   it("四个数：回答数 / 满意度 / 收入 / 盲区数", async () => {
     const e = await publishedExpert();

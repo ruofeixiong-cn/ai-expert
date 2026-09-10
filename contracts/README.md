@@ -36,6 +36,19 @@ event: error   data: {"code":402,"message":"余额不足"}
 | `meta` | 流开始，delta 之前 | 前端拿 `message_id` 用于点赞点踩 |
 | `delta` | 多次 | 增量文本 |
 | `done` | 流正常结束 | backend 靠它结算 credits + 落 `messages` |
+
+`finish_reason` 的取值：
+
+| 值 | 含义 | 花了模型的钱吗 |
+|---|---|---|
+| `stop` | 正常生成完 | 是 |
+| `no_context` | 召回一条都没过入口闸门，直接答「这个他没有讲过」 | **否** |
+| `identity` | 身份提问（「你是真人吗」），召回之前就答掉了 | **否** |
+| `length` / `error` | 截断 / 出错 | 视情况 |
+
+> `no_context` 与 `identity` 的 `confidence` 都是 0，但**只有前者算疑似盲区** ——
+> 「你是不是 AI」不是知识缺口，博主不需要为它补一篇文章。
+
 | `error` | 任意时刻，之后立即结束 | **付费墙走这里，不要直接断流** |
 
 三个坑：

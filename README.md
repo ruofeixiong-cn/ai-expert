@@ -86,6 +86,19 @@ make dev                      # 同时起 frontend / backend / agent / worker
 
 ---
 
+## 想先跑起来看看
+
+```bash
+make up && make migrate && make dev    # 起服务
+make seed                              # 另开终端：灌演示数据
+```
+
+然后跟着 **[docs/本地体验.md](docs/本地体验.md)** 走一遍：
+建专家 → 确认七维 → 上线 → 以粉丝身份提问 → 点赞点踩 → 回看看板。
+里面有一份**带预期表现的试题清单**（该答出什么、该拒答什么、该守住什么）。
+
+---
+
 ## 常用命令
 
 ```bash
@@ -93,6 +106,7 @@ make help            # 列出全部命令
 make dev             # 起全部服务
 make test            # 单元 + 集成测试（需要 make up）
 make e2e             # 跨服务端到端（自动起 agent + worker）
+make seed            # 灌演示数据（三篇文章 + 演示账号），配合 docs/本地体验.md
 make eval            # 黄金问答集跑分（SWEEP=1 追加阈值扫描）
 make verify          # 提交前一把梭：test + e2e + eval + contract-check + typecheck
 make contract        # 重新生成两份 OpenAPI 与 TS 类型
