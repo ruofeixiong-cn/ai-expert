@@ -3,6 +3,7 @@ import { useParams } from "react-router";
 import { Send, Sparkles, Lock, ThumbsUp, ThumbsDown } from "lucide-react";
 import { api, type Schema } from "@/api/client";
 import { streamChat } from "@/lib/sse";
+import { onEnterSubmit } from "@/lib/keyboard";
 import { Button, Card, Input, Spinner, Textarea } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +18,7 @@ type Msg = {
 };
 
 type Info = Schema<"ChatExpertInfo">;
+type Phase = "loading" | "ready" | "not_found" | "failed";
 
 /**
  * 粉丝端。这是唯一面向【非博主】用户的页面。
@@ -27,7 +29,7 @@ type Info = Schema<"ChatExpertInfo">;
 export default function SharePage() {
   const { slug = "" } = useParams();
   const [info, setInfo] = useState<Info | null>(null);
-  const [notFound, setNotFound] = useState(false);
+  const [phase, setPhase] = useState<Phase>("loading");
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,17 +39,36 @@ export default function SharePage() {
   const [commentFor, setCommentFor] = useState<string | null>(null);
   const [comment, setComment] = useState("");
 
-  const load = async (withHistory = false) => {
-    const { data, error } = await api.GET("/api/chat/{slug}", { params: { path: { slug } } });
-    if (error || !data) return setNotFound(true);
-    setInfo(data.data);
-    // 只在首次进页面时铺历史 —— 提问过程中再铺会把正在流式输出的那条冲掉
-    if (withHistory) {
-      setMsgs(
-        data.data.history.map((h) => ({
-          role: h.role, text: h.content, id: h.id, rating: h.myRating,
-        })),
-      );
+  /**
+   * 首屏加载和「回答后刷新额度」共用这一个函数，但失败的含义完全不同（F05）：
+   *
+   *   首屏失败 —— 屏幕上什么都没有。只有 404 才说「链接无效」；
+   *              5xx、断网说「加载失败」并给重试。把网络抖动说成链接无效，
+   *              粉丝会直接关掉页面。
+   *   刷新失败 —— 对话还在屏幕上，保留旧的额度数字就好。
+   *              第一版在这里也 setNotFound(true)，一次 502 就把整段对话
+   *              换成了「链接无效」。
+   */
+  const load = async (initial = false) => {
+    if (initial) setPhase("loading");
+    try {
+      const { data, response } = await api.GET("/api/chat/{slug}", { params: { path: { slug } } });
+      if (data) {
+        setInfo(data.data);
+        // 只在首次进页面时铺历史 —— 提问过程中再铺会把正在流式输出的那条冲掉
+        if (initial) {
+          setMsgs(
+            data.data.history.map((h) => ({
+              role: h.role, text: h.content, id: h.id, rating: h.myRating,
+            })),
+          );
+        }
+        setPhase("ready");
+      } else if (initial) {
+        setPhase(response.status === 404 ? "not_found" : "failed");
+      }
+    } catch {
+      if (initial) setPhase("failed");
     }
   };
   useEffect(() => { void load(true); }, [slug]);
@@ -95,7 +116,7 @@ export default function SharePage() {
     } finally {
       setBusy(false);
       setMsgs((m) => m.map((x, i) => (i === m.length - 1 ? { ...x, streaming: false } : x)));
-      void load(); // 刷新试聊剩余
+      void load(); // 刷新试聊剩余。失败时静默保留旧值，见 load 的注释
     }
   }
 
@@ -117,11 +138,21 @@ export default function SharePage() {
     if (error) setMsgs((m) => m.map((x) => (x.id === messageId ? { ...x, rating: prev } : x)));
   }
 
-  if (notFound) {
+  if (phase === "not_found") {
     return (
       <div className="flex min-h-full items-center justify-center px-6 text-center">
         <div>
           <p className="text-sm text-ink-600">这个链接无效，或者专家还没有上线。</p>
+        </div>
+      </div>
+    );
+  }
+  if (phase === "failed") {
+    return (
+      <div className="flex min-h-full items-center justify-center px-6 text-center">
+        <div>
+          <p className="text-sm text-ink-600">加载失败，请检查网络后重试。</p>
+          <Button variant="outline" className="mt-4" onClick={() => void load(true)}>重试</Button>
         </div>
       </div>
     );
@@ -197,13 +228,10 @@ export default function SharePage() {
                   value={comment}
                   maxLength={200}
                   onChange={(e) => setComment(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void rate(m.id!, "down", comment.trim() || undefined);
-                      setCommentFor(null);
-                    }
-                  }}
+                  onKeyDown={onEnterSubmit(() => {
+                    void rate(m.id!, "down", comment.trim() || undefined);
+                    setCommentFor(null);
+                  })}
                   placeholder="哪里不对？（可不填）"
                   className="h-8 flex-1 text-xs"
                 />
@@ -237,9 +265,8 @@ export default function SharePage() {
             rows={1}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void ask(); }
-            }}
+            // 组字中的回车是在选候选词，不能当成发送（F04），见 lib/keyboard.ts
+            onKeyDown={onEnterSubmit(() => void ask())}
             placeholder={info.trialRemaining > 0 ? "问他一个问题…" : "试聊次数已用完"}
             disabled={info.trialRemaining === 0 && !busy}
             className="min-h-10 flex-1"

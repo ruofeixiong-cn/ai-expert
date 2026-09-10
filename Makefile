@@ -72,6 +72,7 @@ lint-db-access: ## 禁止在唯一入口之外裸开数据库连接
 
 test: lint-db-access ## 跑单元与集成测试（需要 postgres 在跑）
 	pnpm --filter backend test
+	pnpm --filter frontend test
 	cd agent && uv run pytest -q
 
 e2e: ## 端到端测试（自动起 agent + worker；需要 make up 已执行）
