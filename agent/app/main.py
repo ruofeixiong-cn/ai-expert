@@ -112,6 +112,12 @@ class ChatRequest(BaseModel):
     expert_id: UUID
     tenant_id: UUID
     question: str
+    # 这条回答将来在 messages 表里的主键。
+    #
+    # 由 backend 预先生成并传进来，agent 原样回显在 meta 事件里 ——
+    # 【不能由 agent 自己 uuid4()】：那样生成的 id 不指向任何一行，
+    # 前端拿它去打分只会 404。落库是 backend 的事，主键当然也归它。
+    message_id: UUID
 
 
 @app.post(
@@ -152,7 +158,10 @@ async def chat(req: ChatRequest):
         raise HTTPException(status_code=409, detail="这个专家还没有上线")
 
     return StreamingResponse(
-        chat_stream(req.tenant_id, req.expert_id, row.name, row.expert_model, req.question),
+        chat_stream(
+            req.tenant_id, req.expert_id, row.name, row.expert_model,
+            req.question, req.message_id,
+        ),
         media_type="text/event-stream",
         headers={"cache-control": "no-cache", "x-accel-buffering": "no"},
     )

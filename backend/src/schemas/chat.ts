@@ -2,6 +2,23 @@ import { z } from "@hono/zod-openapi";
 
 /** 粉丝端。这是唯一面向【非博主】用户的接口面。 */
 
+/**
+ * 一条历史消息。
+ *
+ * ⚠️ `myRating` 内联了 enum 而没有复用 Rating 组件 —— M2 踩过：
+ *    对一个已注册的 OpenAPI 组件套 `.nullable()`，可空性会被烘进组件本身，
+ *    生成的前端类型直接塌成 never。
+ */
+export const ChatMessage = z
+  .object({
+    id: z.string().uuid(),
+    role: z.enum(["user", "assistant"]),
+    content: z.string(),
+    /** 我给这条回答打过的分。null = 还没打过。 */
+    myRating: z.enum(["up", "down"]).nullable(),
+  })
+  .openapi("ChatMessage");
+
 export const ChatExpertInfo = z
   .object({
     name: z.string(),
@@ -11,6 +28,13 @@ export const ChatExpertInfo = z
     priceCents: z.number().int(),
     /** 免登录试聊剩余条数。归零后提问返回 402。 */
     trialRemaining: z.number().int(),
+    /**
+     * 最近 50 条历史。
+     *
+     * M3 漏了这个：粉丝关掉页面再打开，屏幕空空如也，
+     * 却显示"剩余 1 条"（额度是按库里的回答数算的）。
+     */
+    history: z.array(ChatMessage),
   })
   .openapi("ChatExpertInfo");
 

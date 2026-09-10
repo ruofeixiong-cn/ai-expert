@@ -154,3 +154,18 @@ async def test_agent_cannot_touch_conversations(seeded):
         async with tenant_conn(a["tenant_id"]) as conn:
             await conn.execute(text("SELECT id FROM conversations LIMIT 1"))
     assert "permission denied" in str(exc.value).lower()
+
+
+# ─── M4：feedbacks 的权限边界 ────────────────────────────────────────────
+async def test_agent_cannot_touch_feedbacks(seeded):
+    """
+    反馈是业务数据，不是内容处理 —— agent 一点权限都没有。
+
+    这条测试保护的是「新表默认不可达」这个机制本身：0012 里一行 GRANT 都没写，
+    如果哪天有人给 app_agent 加了 ALTER DEFAULT PRIVILEGES，这条会立刻变红。
+    """
+    a = seeded["a"]
+    with pytest.raises((ProgrammingError, DBAPIError)) as exc:
+        async with tenant_conn(a["tenant_id"]) as conn:
+            await conn.execute(text("SELECT id FROM feedbacks LIMIT 1"))
+    assert "permission denied" in str(exc.value).lower()

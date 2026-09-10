@@ -8,7 +8,7 @@ import json
 import logging
 import time
 from typing import AsyncIterator
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from app.config import settings
 from app.pipeline import safety
@@ -68,10 +68,14 @@ async def _stream_real(system: str, user: str) -> AsyncIterator[str]:
 
 
 async def chat_stream(
-    tenant_id: UUID, expert_id: UUID, expert_name: str, model: dict, question: str
+    tenant_id: UUID,
+    expert_id: UUID,
+    expert_name: str,
+    model: dict,
+    question: str,
+    message_id: UUID,
 ) -> AsyncIterator[str]:
     started = time.monotonic()
-    message_id = uuid4()
 
     try:
         hits = await retrieve(tenant_id, expert_id, question)

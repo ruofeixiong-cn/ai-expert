@@ -607,6 +607,41 @@
           }
         ]
       },
+      "ChatMessage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "type": "string"
+          },
+          "myRating": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "up",
+              "down"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "content",
+          "myRating"
+        ]
+      },
       "ChatExpertInfo": {
         "type": "object",
         "properties": {
@@ -627,6 +662,12 @@
           },
           "trialRemaining": {
             "type": "integer"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            }
           }
         },
         "required": [
@@ -634,7 +675,8 @@
           "creatorNickname",
           "knowledgeSize",
           "priceCents",
-          "trialRemaining"
+          "trialRemaining",
+          "history"
         ]
       },
       "ChatStream": {
@@ -652,6 +694,44 @@
         },
         "required": [
           "question"
+        ]
+      },
+      "Rating": {
+        "type": "string",
+        "enum": [
+          "up",
+          "down"
+        ]
+      },
+      "FeedbackResult": {
+        "type": "object",
+        "properties": {
+          "rating": {
+            "$ref": "#/components/schemas/Rating"
+          }
+        },
+        "required": [
+          "rating"
+        ]
+      },
+      "FeedbackInput": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "rating": {
+            "$ref": "#/components/schemas/Rating"
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "messageId",
+          "rating"
         ]
       },
       "ModelItem": {
@@ -946,6 +1026,82 @@
           "shareSlug",
           "shareUrl",
           "publishedAt"
+        ]
+      },
+      "Blindspot": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "question": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "no_context",
+              "low_confidence"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "messageId",
+          "question",
+          "confidence",
+          "reason",
+          "createdAt"
+        ]
+      },
+      "ExpertStats": {
+        "type": "object",
+        "properties": {
+          "answers": {
+            "type": "integer"
+          },
+          "satisfaction": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "upVotes": {
+            "type": "integer"
+          },
+          "downVotes": {
+            "type": "integer"
+          },
+          "revenueCents": {
+            "type": "integer"
+          },
+          "blindspots": {
+            "type": "integer"
+          },
+          "recentBlindspots": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Blindspot"
+            }
+          }
+        },
+        "required": [
+          "answers",
+          "satisfaction",
+          "upVotes",
+          "downVotes",
+          "revenueCents",
+          "blindspots",
+          "recentBlindspots"
         ]
       }
     },
@@ -1981,6 +2137,78 @@
         }
       }
     },
+    "/api/chat/{slug}/feedback": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "给一条回答点赞 / 点踩",
+        "description": "产品文档 §13 写的是全局的 `POST /api/feedback`，这里挂在分享短链下面。\n\n原因是隔离：粉丝不属于任何租户，一个裸的 message_id 无从确定该设哪个 `app.current_tenant` —— 全局路径要么再开一个 SECURITY DEFINER 口子（入参是可枚举的 uuid，比 slug 危险得多），要么绕过 RLS。挂在 slug 下则复用已有的 `resolve_share_slug`，一个新口子都不用开。\n\n同一个粉丝对同一条回答只有一条记录 —— 赞改踩是更新，不是追加。\n\n消息不存在、不是回答、或不属于当前粉丝的会话，一律返回 404（不是 403）。",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 32
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "已记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "number",
+                      "description": "0 = 成功；非 0 见 contracts/README.md",
+                      "example": 0
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FeedbackResult"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "短链无效，或这条消息不是你的",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{id}/model": {
       "get": {
         "tags": [
@@ -2350,6 +2578,83 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/BuildResult"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或 token 失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experts/{id}/stats": {
+      "get": {
+        "tags": [
+          "expert"
+        ],
+        "summary": "Creator 最小看板（回答数 / 满意度 / 收入 / 盲区数）",
+        "description": "疑似盲区 = `finish_reason='no_context'` 或（被点踩且置信度低于阈值）。\n\n前一项是隐性信号，**不需要粉丝点任何按钮** —— 只靠点踩的话这个数会长期是 0，而「用户没动机主动反馈」是产品规划文档点名的头号风险。\n\n`satisfaction` 在无人评价时是 `null` 而不是 0 ——「没人评价」和「所有人都说不好」是相反的两件事。\n\n`revenueCents` 在 M5 接入付费前恒为 0，前端应明写而不是当成真实数据展示。",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "5f8c1d2e-3a4b-4c5d-9e6f-7a8b9c0d1e2f"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "看板",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "number",
+                      "description": "0 = 成功；非 0 见 contracts/README.md",
+                      "example": 0
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ExpertStats"
                     }
                   },
                   "required": [

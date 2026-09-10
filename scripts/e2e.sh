@@ -15,10 +15,29 @@ export EXTRACT_PROVIDER="${_provider:+auto}";   export EXTRACT_PROVIDER="${EXTRA
 export CHAT_PROVIDER="${_provider:+auto}";      export CHAT_PROVIDER="${CHAT_PROVIDER:-fake}"
 export RERANK_PROVIDER="${_provider:+auto}";    export RERANK_PROVIDER="${RERANK_PROVIDER:-fake}"
 
+# ⚠️ 端口被占就直接失败，不要"看到 /internal/health 通了就往下跑"。
+#
+# M4 踩过：一个 12 小时前遗留的 agent 进程一直占着 8000，本脚本新起的那个
+# 绑不上端口默默退出，健康检查却被【旧进程】答应了 —— 于是连续几轮 e2e
+# 测的都是老代码。表现成"改了 agent 但行为没变"，极难往这个方向想。
+# Pydantic 默认忽略多余字段，新加的请求字段被老进程静静丢掉，更是一点声音都没有。
+_port="${AGENT_PORT:-8000}"
+if lsof -ti ":${_port}" >/dev/null 2>&1; then
+  echo "✗ 端口 ${_port} 已被占用 —— 很可能是上一次没退干净的 agent。" >&2
+  echo "  这会让端到端测试跑在【旧代码】上，而且看起来一切正常。" >&2
+  echo "  先收拾掉：kill \$(lsof -ti :${_port})" >&2
+  exit 1
+fi
+
 pids=()
 cleanup() {
   for pid in "${pids[@]:-}"; do kill "$pid" 2>/dev/null || true; done
   wait 2>/dev/null || true
+  # ⚠️ `uv run X` 会再 fork 一个真正跑 X 的子进程，kill 掉 uv 本身【收不走它】。
+  #    漏掉这一步的后果就是上面那个端口检查在防的事：残留的 agent 继续占着
+  #    8000，下一轮 e2e 悄悄跑在旧代码上。所以按端口和进程名再收一次尾。
+  lsof -ti ":${_port}" 2>/dev/null | xargs -r kill 2>/dev/null || true
+  pkill -f "arq app.workers.build.WorkerSettings" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 

@@ -376,13 +376,19 @@
           "question": {
             "type": "string",
             "title": "Question"
+          },
+          "message_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Message Id"
           }
         },
         "type": "object",
         "required": [
           "expert_id",
           "tenant_id",
-          "question"
+          "question",
+          "message_id"
         ],
         "title": "ChatRequest",
         "description": "tenant_id 由 backend 从分享短链反查得出，绝不来自客户端。\nagent 侧仍会用 experts 表再核对一次（纵深防御）。"

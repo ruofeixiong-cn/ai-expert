@@ -1,12 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
-import { Send, Sparkles, Lock } from "lucide-react";
-import { api } from "@/api/client";
+import { Send, Sparkles, Lock, ThumbsUp, ThumbsDown } from "lucide-react";
+import { api, type Schema } from "@/api/client";
 import { streamChat } from "@/lib/sse";
-import { Button, Card, Spinner, Textarea } from "@/components/ui";
+import { Button, Card, Input, Spinner, Textarea } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
-type Msg = { role: "user" | "assistant"; text: string; streaming?: boolean };
+type Rating = "up" | "down";
+type Msg = {
+  role: "user" | "assistant";
+  text: string;
+  streaming?: boolean;
+  /** 回答落库后的 id，从 SSE 的 meta 事件拿。没有它就没法打分。 */
+  id?: string;
+  rating?: Rating | null;
+};
+
+type Info = Schema<"ChatExpertInfo">;
 
 /**
  * 粉丝端。这是唯一面向【非博主】用户的页面。
@@ -16,9 +26,7 @@ type Msg = { role: "user" | "assistant"; text: string; streaming?: boolean };
  */
 export default function SharePage() {
   const { slug = "" } = useParams();
-  const [info, setInfo] = useState<{
-    name: string; creatorNickname: string | null; knowledgeSize: number; trialRemaining: number;
-  } | null>(null);
+  const [info, setInfo] = useState<Info | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -26,12 +34,23 @@ export default function SharePage() {
   const [paywall, setPaywall] = useState<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
 
-  const load = async () => {
+  const [commentFor, setCommentFor] = useState<string | null>(null);
+  const [comment, setComment] = useState("");
+
+  const load = async (withHistory = false) => {
     const { data, error } = await api.GET("/api/chat/{slug}", { params: { path: { slug } } });
     if (error || !data) return setNotFound(true);
     setInfo(data.data);
+    // 只在首次进页面时铺历史 —— 提问过程中再铺会把正在流式输出的那条冲掉
+    if (withHistory) {
+      setMsgs(
+        data.data.history.map((h) => ({
+          role: h.role, text: h.content, id: h.id, rating: h.myRating,
+        })),
+      );
+    }
   };
-  useEffect(() => { void load(); }, [slug]);
+  useEffect(() => { void load(true); }, [slug]);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
 
   async function ask() {
@@ -45,7 +64,14 @@ export default function SharePage() {
     const ac = new AbortController();
     try {
       for await (const ev of streamChat(slug, question, ac.signal)) {
-        if (ev.event === "delta") {
+        if (ev.event === "meta") {
+          // 回答此刻才有 id，赞/踩按钮要靠它
+          setMsgs((m) => {
+            const next = [...m];
+            next[next.length - 1] = { ...next[next.length - 1]!, id: ev.data.message_id };
+            return next;
+          });
+        } else if (ev.event === "delta") {
           setMsgs((m) => {
             const next = [...m];
             const last = next[next.length - 1]!;
@@ -71,6 +97,24 @@ export default function SharePage() {
       setMsgs((m) => m.map((x, i) => (i === m.length - 1 ? { ...x, streaming: false } : x)));
       void load(); // 刷新试聊剩余
     }
+  }
+
+  /**
+   * 打分。
+   *
+   * 摩擦必须低到接近零 —— 「用户没动机主动反馈」是产品规划文档点名的头号风险。
+   * 所以先乐观更新按钮状态，网络失败再回滚：粉丝点完立刻看到反应，
+   * 不用等一个 round trip。
+   */
+  async function rate(messageId: string, rating: Rating, text?: string) {
+    const prev = msgs.find((m) => m.id === messageId)?.rating ?? null;
+    setMsgs((m) => m.map((x) => (x.id === messageId ? { ...x, rating } : x)));
+
+    const { error } = await api.POST("/api/chat/{slug}/feedback", {
+      params: { path: { slug } },
+      body: { messageId, rating, ...(text ? { comment: text } : {}) },
+    });
+    if (error) setMsgs((m) => m.map((x) => (x.id === messageId ? { ...x, rating: prev } : x)));
   }
 
   if (notFound) {
@@ -108,7 +152,7 @@ export default function SharePage() {
         )}
 
         {msgs.map((m, i) => (
-          <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
+          <div key={m.id ?? i} className={cn("flex flex-col", m.role === "user" ? "items-end" : "items-start")}>
             <div
               className={cn(
                 "max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
@@ -120,6 +164,61 @@ export default function SharePage() {
               {m.text}
               {m.streaming && <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-ink-400 align-middle" />}
             </div>
+
+            {/* 回答落库拿到 id 之后才能打分；流式输出过程中不显示 */}
+            {m.role === "assistant" && m.id && !m.streaming && (
+              <div className="mt-1.5 flex items-center gap-1 pl-1">
+                <RateButton
+                  active={m.rating === "up"}
+                  label="有帮助"
+                  onClick={() => { setCommentFor(null); void rate(m.id!, "up"); }}
+                >
+                  <ThumbsUp className="size-3.5" />
+                </RateButton>
+                <RateButton
+                  active={m.rating === "down"}
+                  label="没帮助"
+                  onClick={() => {
+                    setCommentFor(m.id!);
+                    setComment("");
+                    void rate(m.id!, "down");
+                  }}
+                >
+                  <ThumbsDown className="size-3.5" />
+                </RateButton>
+              </div>
+            )}
+
+            {/* 原因是可选的锦上添花 —— 上面那一下已经落库了，不填也没关系 */}
+            {commentFor === m.id && (
+              <div className="mt-1.5 flex w-full max-w-[85%] items-center gap-2 pl-1">
+                <Input
+                  autoFocus
+                  value={comment}
+                  maxLength={200}
+                  onChange={(e) => setComment(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void rate(m.id!, "down", comment.trim() || undefined);
+                      setCommentFor(null);
+                    }
+                  }}
+                  placeholder="哪里不对？（可不填）"
+                  className="h-8 flex-1 text-xs"
+                />
+                <button
+                  type="button"
+                  className="shrink-0 text-xs text-ink-400 hover:text-ink-600"
+                  onClick={() => {
+                    if (comment.trim()) void rate(m.id!, "down", comment.trim());
+                    setCommentFor(null);
+                  }}
+                >
+                  {comment.trim() ? "提交" : "跳过"}
+                </button>
+              </div>
+            )}
           </div>
         ))}
         <div ref={bottom} />
@@ -157,5 +256,30 @@ export default function SharePage() {
         </p>
       </div>
     </div>
+  );
+}
+
+function RateButton({
+  active, label, onClick, children,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={active}
+      title={label}
+      className={cn(
+        "rounded-md p-1.5 transition-colors",
+        active ? "bg-brand-50 text-brand-600" : "text-ink-400 hover:bg-ink-100 hover:text-ink-600",
+      )}
+    >
+      {children}
+    </button>
   );
 }

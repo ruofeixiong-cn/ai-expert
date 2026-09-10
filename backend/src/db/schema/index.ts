@@ -1,6 +1,6 @@
 import {
   pgTable, uuid, text, timestamp, integer, boolean,
-  jsonb, doublePrecision, vector, index, uniqueIndex,
+  jsonb, doublePrecision, vector, index, uniqueIndex, bigserial,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -278,6 +278,19 @@ export const messages = pgTable(
       .references(() => conversations.id, { onDelete: "cascade" }),
     // 'user' | 'assistant'
     role: text("role").notNull(),
+    /*
+     * 会话内的严格顺序。
+     *
+     * ⚠️ 不能用 created_at 排序：它的默认值 now() 是【事务开始时间】，
+     *    同一个事务里插入的两条消息时间戳完全相同，排序结果是未定义的。
+     *    生产上提问和回答分属两个事务所以看起来正常 —— 这种"看起来正常"
+     *    最危险：哪天有人把两条消息合到一个事务里写，聊天记录就开始乱序，
+     *    而且不报错。M4 写测试时撞上了（用一个事务塞种子数据）。
+     *
+     * 顺带修掉两处依赖时间戳的比较：settleChat 的幂等判断、
+     * 看板 LATERAL 取"这条回答之前最近的提问"。
+     */
+    seq: bigserial("seq", { mode: "number" }).notNull(),
     content: text("content").notNull(),
     // 这次回答命中了哪些切片。M4 的「疑似盲区」要靠它定位问题出在哪，
     // M6 评测要靠它算召回准确率。
@@ -294,7 +307,7 @@ export const messages = pgTable(
     latencyMs: integer("latency_ms"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("messages_conversation_idx").on(t.conversationId, t.createdAt)],
+  (t) => [index("messages_conversation_idx").on(t.conversationId, t.seq)],
 );
 
 // ── build_jobs ───────────────────────────────────────────────
@@ -320,8 +333,40 @@ export const buildJobs = pgTable(
   (t) => [index("build_jobs_expert_idx").on(t.expertId)],
 );
 
+// ── feedbacks ────────────────────────────────────────────────
+// 飞轮的第一格齿轮（产品文档 §10.3）。backend 独占，agent 一点权限都没有 ——
+// 反馈是业务数据，不是内容处理。M6 评测将来若要读，那天再单独 GRANT。
+//
+// ⚠️ 没有 is_blindspot 列。产品文档 §12 列了这一列，这里刻意不落库：
+//    阈值目前只有两个校准点撑着，一定会被 M6 的黄金问答集改。落库等于
+//    把一个待定的判断冻进历史 —— 改阈值那天，新数据按新标准、旧数据按
+//    旧标准，同一块看板两套口径，而且没有任何地方会报错。
+//    原始信号（confidence / finish_reason / rating）都不可变，随时可重算。
+export const feedbacks = pgTable(
+  "feedbacks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull(),
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    fanUserId: uuid("fan_user_id").notNull().references(() => users.id),
+    // 'up' | 'down'
+    rating: text("rating").notNull(),
+    // 点踩时的可选原因。摩擦必须低 —— 不填也能提交。
+    comment: text("comment"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // 「改主意」就是靠它：赞改踩走 ON CONFLICT DO UPDATE，不是插第二条。
+    // 否则满意度会被同一个人投两次票污染。
+    uniqueIndex("feedbacks_message_fan_uidx").on(t.messageId, t.fanUserId),
+  ],
+);
+
 export const schema = {
   users, tenants, authSessions, refreshTokens, loginAttempts,
   experts, expertModelDrafts, materials, chunks, buildJobs,
-  conversations, messages,
+  conversations, messages, feedbacks,
 };

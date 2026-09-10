@@ -38,8 +38,13 @@ event: error   data: {"code":402,"message":"余额不足"}
 | `done` | 流正常结束 | backend 靠它结算 credits + 落 `messages` |
 | `error` | 任意时刻，之后立即结束 | **付费墙走这里，不要直接断流** |
 
-两个坑：
+三个坑：
 
+- **`message_id` 由 backend 生成，agent 只负责原样回显。**
+  它是这条回答将来在 `messages` 表里的主键，backend 在 `beginChat` 时就定好，
+  随 `POST /internal/chat` 传给 agent，落库时用同一个值。
+  让 agent 自己 `uuid4()` 的话，这个 id 不指向任何一行 ——
+  前端拿它去打分稳定 404，而三方各自的单测全绿（各造各的 id，谁也发现不了）。
 - **前端不能用 `EventSource`** —— 它不支持 POST，也不支持自定义 header 带 JWT。
   必须 `fetch` + `ReadableStream` 手动分帧。
 - **backend 不能零拷贝透传** —— `new Response(upstream.body)` 会让 Node 看不到

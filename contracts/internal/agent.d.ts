@@ -171,6 +171,11 @@ export interface components {
             tenant_id: string;
             /** Question */
             question: string;
+            /**
+             * Message Id
+             * Format: uuid
+             */
+            message_id: string;
         };
         /** ExtractModelRequest */
         ExtractModelRequest: {

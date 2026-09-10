@@ -49,7 +49,7 @@ async def test_no_hits_skips_the_model_entirely(monkeypatch):
     monkeypatch.setattr(gen, "_stream_real", boom)
     monkeypatch.setattr(gen, "_stream_fake", boom)
 
-    raw = await _collect(gen.chat_stream(uuid4(), uuid4(), "老王", MODEL, "房价会涨吗"))
+    raw = await _collect(gen.chat_stream(uuid4(), uuid4(), "老王", MODEL, "房价会涨吗", uuid4()))
     assert called is False, "召回为空却仍然调用了生成模型"
 
     assert _events(raw) == ["meta"] + ["delta"] * (len(NO_CONTEXT_ANSWER) // 12 + 1) + ["done"]
@@ -74,7 +74,7 @@ async def test_event_order_and_chunk_ids(monkeypatch):
     monkeypatch.setattr(gen, "retrieve", fake_retrieve)
     monkeypatch.setattr("app.config.settings.CHAT_PROVIDER", "fake")
 
-    raw = await _collect(gen.chat_stream(uuid4(), uuid4(), "老王", MODEL, "定投要注意什么"))
+    raw = await _collect(gen.chat_stream(uuid4(), uuid4(), "老王", MODEL, "定投要注意什么", uuid4()))
     order = _events(raw)
     assert order[0] == "meta"
     assert order[-1] == "done"
@@ -90,7 +90,7 @@ async def test_retrieval_failure_emits_error_not_crash(monkeypatch):
         raise RuntimeError("pgvector down")
 
     monkeypatch.setattr(gen, "retrieve", boom)
-    raw = await _collect(gen.chat_stream(uuid4(), uuid4(), "老王", MODEL, "问题"))
+    raw = await _collect(gen.chat_stream(uuid4(), uuid4(), "老王", MODEL, "问题", uuid4()))
     assert _events(raw) == ["error"]
     assert '"code": 5000' in "".join(raw)
 
@@ -135,7 +135,7 @@ async def test_safety_note_is_appended_to_stream(monkeypatch):
     monkeypatch.setattr(gen, "retrieve", fake_retrieve)
     monkeypatch.setattr("app.config.settings.CHAT_PROVIDER", "fake")
 
-    body = "".join(await _collect(gen.chat_stream(uuid4(), uuid4(), "老王", MODEL, "你是本人吗")))
+    body = "".join(await _collect(gen.chat_stream(uuid4(), uuid4(), "老王", MODEL, "你是本人吗", uuid4())))
     assert "不是他本人" in body
     assert '"safety": "disclaimed"' in body
 
@@ -180,3 +180,18 @@ async def test_injection_flagged_chunk_is_downweighted_but_not_blocked(monkeypat
     weak = 0.20
     assert weak * 1.0 >= RERANK_MIN_SCORE
     assert weak * 0.2 < RERANK_MIN_SCORE, "中等相关的投毒切片会被降权挡掉"
+
+
+async def test_meta_echoes_the_message_id_from_backend(monkeypatch):
+    """
+    meta 里的 message_id 必须原样回显 backend 传进来的那个。
+
+    第一版是 agent 自己 uuid4()，那个 id 不指向 messages 表里的任何一行 ——
+    前端拿它去 POST 反馈，稳定 404。三层单测全绿，只有跨服务的端到端能发现：
+    因为单测两边都在自说自话，各自造各自的 id。
+    """
+    monkeypatch.setattr(gen, "retrieve", lambda *a, **k: _empty())
+
+    mid = uuid4()
+    raw = await _collect(gen.chat_stream(uuid4(), uuid4(), "老王", MODEL, "随便问", mid))
+    assert f'"message_id": "{mid}"' in "".join(raw)

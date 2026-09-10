@@ -12,6 +12,7 @@ import {
   Dimension, ModelView, ConfirmDimensionInput, PublishResult,
 } from "../schemas/model.js";
 import { ChatExpertInfo, ChatInput, ChatStream } from "../schemas/chat.js";
+import { FeedbackInput, FeedbackResult, ExpertStats } from "../schemas/feedback.js";
 
 /**
  * M1 的公开接口契约。
@@ -242,4 +243,45 @@ export const chatRoute = createRoute({
       content: { "application/json": { schema: ErrorBody } },
     },
   },
+});
+
+// ─── 反馈与看板 ──────────────────────────────────────────────────────────────
+
+export const feedbackRoute = createRoute({
+  method: "post", path: "/api/chat/{slug}/feedback", tags: ["chat"],
+  summary: "给一条回答点赞 / 点踩",
+  description:
+    "产品文档 §13 写的是全局的 `POST /api/feedback`，这里挂在分享短链下面。\n\n" +
+    "原因是隔离：粉丝不属于任何租户，一个裸的 message_id 无从确定该设哪个 " +
+    "`app.current_tenant` —— 全局路径要么再开一个 SECURITY DEFINER 口子" +
+    "（入参是可枚举的 uuid，比 slug 危险得多），要么绕过 RLS。" +
+    "挂在 slug 下则复用已有的 `resolve_share_slug`，一个新口子都不用开。\n\n" +
+    "同一个粉丝对同一条回答只有一条记录 —— 赞改踩是更新，不是追加。\n\n" +
+    "消息不存在、不是回答、或不属于当前粉丝的会话，一律返回 404（不是 403）。",
+  request: {
+    params: z.object({ slug: z.string().min(4).max(32) }),
+    body: body(FeedbackInput),
+  },
+  responses: {
+    200: json("已记录", FeedbackResult),
+    404: {
+      description: "短链无效，或这条消息不是你的",
+      content: { "application/json": { schema: ErrorBody } },
+    },
+  },
+});
+
+export const statsRoute = createRoute({
+  method: "get", path: "/api/experts/{id}/stats", tags: ["expert"],
+  summary: "Creator 最小看板（回答数 / 满意度 / 收入 / 盲区数）",
+  description:
+    "疑似盲区 = `finish_reason='no_context'` 或（被点踩且置信度低于阈值）。\n\n" +
+    "前一项是隐性信号，**不需要粉丝点任何按钮** —— 只靠点踩的话这个数会长期是 0，" +
+    "而「用户没动机主动反馈」是产品规划文档点名的头号风险。\n\n" +
+    "`satisfaction` 在无人评价时是 `null` 而不是 0 ——" +
+    "「没人评价」和「所有人都说不好」是相反的两件事。\n\n" +
+    "`revenueCents` 在 M5 接入付费前恒为 0，前端应明写而不是当成真实数据展示。",
+  security: bearer,
+  request: { params: z.object({ id: UuidParam }) },
+  responses: { 200: json("看板", ExpertStats), ...authedErrors },
 });

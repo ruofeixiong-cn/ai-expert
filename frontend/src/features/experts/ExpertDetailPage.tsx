@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, FileText, Link2, ClipboardPaste, Hammer, Sparkles } from "lucide-react";
 import { api, errorMessage, type ReqBody } from "@/api/client";
 import { Alert, Button, Card, Input, Label, Progress, Spinner, Textarea } from "@/components/ui";
+import StatsCard from "./StatsCard";
 
 type Tab = "paste" | "file" | "url";
 
@@ -129,6 +130,9 @@ export default function ExpertDetailPage() {
           </Card>
         </Link>
       )}
+
+      {/* 上线之后才有看板 —— 没上线的专家不可能有数据 */}
+      {e.shareSlug && <StatsCard expertId={id} />}
 
       {job && (
         <Card className="mt-4 p-4">

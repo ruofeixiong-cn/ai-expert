@@ -12,6 +12,7 @@ import * as sessionSvc from "./services/session.js";
 import * as expertSvc from "./services/expert.js";
 import * as modelSvc from "./services/model.js";
 import * as chatSvc from "./services/chat.js";
+import * as feedbackSvc from "./services/feedback.js";
 import * as agentClient from "./agent-client/index.js";
 import { teeStream, sseFrame } from "./services/sse.js";
 import {
@@ -257,6 +258,7 @@ export function createApp() {
       expert_id: session.expertId,
       tenant_id: session.tenantId,
       question,
+      message_id: session.assistantMessageId,
     });
 
     const started = Date.now();
@@ -282,6 +284,19 @@ export function createApp() {
         "x-accel-buffering": "no",
       },
     });
+  });
+
+  // ── M4 反馈 ──
+  //
+  // 挂在分享短链下面而不是产品文档写的全局 `/api/feedback` —— 粉丝不属于
+  // 任何租户，一个裸的 message_id 无从确定该设哪个 app.current_tenant。
+  // 挂在 slug 下则复用已有的 resolve_share_slug，一个新的 RLS 口子都不用开。
+  app.openapi(R.feedbackRoute, async (c) => {
+    const fanId = await ensureFan(c);
+    return c.json(
+      ok(await feedbackSvc.submitFeedback(c.req.valid("param").slug, fanId, c.req.valid("json"))),
+      200,
+    );
   });
 
   // ── M2 七维 ──
@@ -316,6 +331,11 @@ export function createApp() {
 
   app.openapi(R.buildRoute, async (c) =>
     c.json(ok(await expertSvc.triggerBuild(c.get("auth").tenantId, c.req.valid("param").id))),
+  );
+
+  // ── M4 看板 ──
+  app.openapi(R.statsRoute, async (c) =>
+    c.json(ok(await feedbackSvc.getStats(c.get("auth").tenantId, c.req.valid("param").id))),
   );
 
   app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {

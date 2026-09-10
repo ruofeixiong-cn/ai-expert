@@ -15,7 +15,7 @@ Node 侧 backend/src/db/schema/index.ts 的【手写镜像】。
 """
 
 from sqlalchemy import (
-    Boolean, Column, Integer, MetaData, Table, Text, TIMESTAMP, Float, func,
+    BigInteger, Boolean, Column, Integer, MetaData, Table, Text, TIMESTAMP, Float, func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from pgvector.sqlalchemy import Vector
@@ -44,6 +44,9 @@ messages = Table(
     Column("tenant_id", UUID(as_uuid=True), nullable=False),
     Column("conversation_id", UUID(as_uuid=True), nullable=False),
     Column("role", Text, nullable=False),
+    # 会话内的严格顺序。M6 读历史对话做评测时按它排，不要按 created_at ——
+    # 同事务插入的两条消息时间戳相同，排序未定义。见 0013_message_seq.sql。
+    Column("seq", BigInteger, nullable=False),
     Column("content", Text, nullable=False),
     Column("chunk_ids", ARRAY(UUID(as_uuid=True)), nullable=False),
     Column("confidence", Float),

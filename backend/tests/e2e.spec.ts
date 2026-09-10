@@ -55,14 +55,27 @@ async function newExpert(token: string) {
   return (await json(r)).data.id as string;
 }
 
-/** 轮询到构建结束。返回途中观察到的所有状态，用于验证进度确实在推进。 */
-async function waitBuild(token: string, id: string, timeoutMs = 90_000) {
+/**
+ * 等构建结束。返回途中观察到的所有状态，用于验证进度确实在推进。
+ *
+ * ⚠️ 触发【第二次】构建时必须传 jobId。lastBuild 是"最近一个 job"，
+ *    刚 POST 完新 job 还没落库的那一小段时间里，读到的仍是上一个
+ *    已经 succeeded 的 job —— 于是这个函数立刻返回，测试拿着旧结果去断言。
+ *    M4 撞上过一次：「重新生成」偶发地读到上一轮的草稿，
+ *    表现成 generatedAt 没变，看起来像产品 bug，其实是这里等错了对象。
+ */
+async function waitBuild(
+  token: string,
+  id: string,
+  opts: { timeoutMs?: number; jobId?: string } = {},
+) {
+  const { timeoutMs = 90_000, jobId } = opts;
   const seen: Array<{ status: string; progress: number; stage: string | null; error: string | null }> = [];
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const d = (await json(await call(`/api/experts/${id}`, { token }))).data;
     const b = d.lastBuild;
-    if (b) {
+    if (b && (!jobId || b.jobId === jobId)) {
       const last = seen.at(-1);
       if (!last || last.status !== b.status || last.progress !== b.progress) {
         seen.push({ status: b.status, progress: b.progress, stage: b.stage, error: b.error });
@@ -146,7 +159,7 @@ describe.skipIf(!enabled)("端到端：内容入库", () => {
     const id = await newExpert(token);
 
     await call(`/api/experts/${id}/build`, { method: "POST", token });
-    const { detail } = await waitBuild(token, id, 30_000);
+    const { detail } = await waitBuild(token, id, { timeoutMs: 30_000 });
 
     expect(detail.lastBuild.status).toBe("failed");
     expect(detail.lastBuild.error).toContain("素材");
@@ -249,7 +262,8 @@ describe.skipIf(!enabled)("端到端：七维专家模型", () => {
 
     const res = await call(`/api/experts/${id}/model/regenerate`, { method: "POST", token });
     expect(res.status).toBe(200);
-    await waitBuild(token, id);
+    // 必须等【这个】job —— 不然会读到上一轮已 succeeded 的 build
+    await waitBuild(token, id, { jobId: (await json(res)).data.jobId });
 
     const chunksAfter = await snapshot();
     // 博主会反复重新生成直到满意。每次都重跑 embedding 是真金白银。
@@ -266,8 +280,8 @@ describe.skipIf(!enabled)("端到端：七维专家模型", () => {
       body: JSON.stringify({ items: [{ content: "我亲手改的立场", confidence: 1, evidenceChunkIds: [] }] }),
     });
 
-    await call(`/api/experts/${id}/model/regenerate`, { method: "POST", token });
-    await waitBuild(token, id);
+    const re = await call(`/api/experts/${id}/model/regenerate`, { method: "POST", token });
+    await waitBuild(token, id, { jobId: (await json(re)).data.jobId });
 
     const m = await model(token, id);
     // 草稿和确认是两份数据，重新生成只动草稿
@@ -498,5 +512,89 @@ describe.skipIf(!enabled)("端到端：粉丝对话", () => {
     expect(r.text).not.toMatch(/我就是本人|我不是\s*AI/);
     // 该答的还得答出来
     expect(r.text.length).toBeGreaterThan(20);
+  }, 180_000);
+  // ── M4 反馈与看板 ──
+
+  const stats = async (token: string, id: string) =>
+    (await json(await call(`/api/experts/${id}/stats`, { token }))).data;
+
+  /*
+   * 跨服务的打分链路：meta.message_id → POST 反馈 → 博主看板。
+   *
+   * 这里【不】断言"点踩必然产生盲区" —— 盲区还要求置信度低，
+   * 而假 rerank 是按【字符重合度】打分的："港股打新要准备多少现金" 和一篇
+   * 基金文章共享大量常用字，分数并不低。字符重合跟语义相似不是一回事。
+   *
+   * 盲区规则本身在 backend 单测里精确验（F6 低置信度算、F7 高置信度不算，
+   * confidence 是写死的）。这一层要证明的是【三个服务真的串起来了】：
+   * agent 回显的 id 能打分、分数进得了库、博主那边看得见。
+   */
+  it("粉丝点踩，博主的看板上立刻看得到", async () => {
+    const { token, id, slug } = await publish();
+
+    const r = await ask(slug, "港股打新要准备多少现金");
+    expect(r.meta.message_id, "meta 里没有 message_id，前端就无从打分").toBeTruthy();
+
+    const before = await stats(token, id);
+
+    const fb = await app.request(`/api/chat/${slug}/feedback`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: r.cookie },
+      body: JSON.stringify({ messageId: r.meta.message_id, rating: "down", comment: "答非所问" }),
+    });
+    expect(fb.status, "agent 回显的 message_id 打不了分").toBe(200);
+
+    const after = await stats(token, id);
+    expect(after.downVotes).toBe(before.downVotes + 1);
+    expect(after.satisfaction).toBe(0); // 唯一一条反馈是差评
+
+    // 置信度确实低时，这一踩才该变成盲区
+    if (r.meta.confidence < 0.15) {
+      expect(after.blindspots).toBeGreaterThan(before.blindspots);
+      const spot = after.recentBlindspots.find((b: any) => b.messageId === r.meta.message_id);
+      expect(spot.question).toBe("港股打新要准备多少现金");
+    }
+  }, 180_000);
+
+  // ★ F8：隐性信号 —— 全程没有任何人点过任何按钮
+  it("问库里没有的问题，不用点任何按钮就进了盲区列表", async () => {
+    const { token, id, slug } = await publish();
+    const r = await ask(slug, "你觉得比特币明年会涨到多少");
+
+    const s = await stats(token, id);
+    expect(s.downVotes).toBe(0);
+
+    if (r.done.finish_reason === "no_context") {
+      expect(s.blindspots).toBeGreaterThan(0);
+      const spot = s.recentBlindspots.find((b: any) => b.messageId === r.meta.message_id);
+      expect(spot.reason).toBe("no_context");
+      expect(spot.question).toBe("你觉得比特币明年会涨到多少");
+    } else {
+      // 偶尔有切片擦着阈值过闸门（M3 的 D5 记过这件事）。
+      // 那种情况下这条回答本来就不该算"完全没讲过"，跳过不算失败 ——
+      // 隐性信号的确定性验证在 backend 单测 F8 里。
+      expect(r.meta.chunk_ids.length).toBeGreaterThan(0);
+    }
+  }, 180_000);
+
+  // 刷新页面这件事，粉丝一定会做
+  it("重新打开分享页，历史和已打的分都还在", async () => {
+    const { slug } = await publish();
+    const r = await ask(slug, "定投的手续费怎么算");
+    await app.request(`/api/chat/${slug}/feedback`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: r.cookie },
+      body: JSON.stringify({ messageId: r.meta.message_id, rating: "up" }),
+    });
+
+    const info = (await json(await app.request(`/api/chat/${slug}`, {
+      headers: { "content-type": "application/json", cookie: r.cookie },
+    }))).data;
+
+    expect(info.history).toHaveLength(2);
+    expect(info.history[0].role).toBe("user");
+    expect(info.history[0].content).toBe("定投的手续费怎么算");
+    expect(info.history[1].content).toBe(r.text);
+    expect(info.history[1].myRating).toBe("up");
   }, 180_000);
 });

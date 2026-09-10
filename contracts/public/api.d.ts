@@ -955,6 +955,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat/{slug}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 给一条回答点赞 / 点踩
+         * @description 产品文档 §13 写的是全局的 `POST /api/feedback`，这里挂在分享短链下面。
+         *
+         *     原因是隔离：粉丝不属于任何租户，一个裸的 message_id 无从确定该设哪个 `app.current_tenant` —— 全局路径要么再开一个 SECURITY DEFINER 口子（入参是可枚举的 uuid，比 slug 危险得多），要么绕过 RLS。挂在 slug 下则复用已有的 `resolve_share_slug`，一个新口子都不用开。
+         *
+         *     同一个粉丝对同一条回答只有一条记录 —— 赞改踩是更新，不是追加。
+         *
+         *     消息不存在、不是回答、或不属于当前粉丝的会话，一律返回 404（不是 403）。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["FeedbackInput"];
+                };
+            };
+            responses: {
+                /** @description 已记录 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["FeedbackResult"];
+                        };
+                    };
+                };
+                /** @description 短链无效，或这条消息不是你的 */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/experts/{id}/model": {
         parameters: {
             query?: never;
@@ -1308,6 +1377,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/experts/{id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Creator 最小看板（回答数 / 满意度 / 收入 / 盲区数）
+         * @description 疑似盲区 = `finish_reason='no_context'` 或（被点踩且置信度低于阈值）。
+         *
+         *     前一项是隐性信号，**不需要粉丝点任何按钮** —— 只靠点踩的话这个数会长期是 0，而「用户没动机主动反馈」是产品规划文档点名的头号风险。
+         *
+         *     `satisfaction` 在无人评价时是 `null` 而不是 0 ——「没人评价」和「所有人都说不好」是相反的两件事。
+         *
+         *     `revenueCents` 在 M5 接入付费前恒为 0，前端应明写而不是当成真实数据展示。
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 看板 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /**
+                             * @description 0 = 成功；非 0 见 contracts/README.md
+                             * @example 0
+                             */
+                            code: number;
+                            /** @example ok */
+                            message: string;
+                            data: components["schemas"]["ExpertStats"];
+                        };
+                    };
+                };
+                /** @description 未登录或 token 失效 */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+                /** @description 资源不存在，或不属于当前租户（刻意不区分，避免泄露存在性） */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorBody"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1479,17 +1622,38 @@ export interface components {
              */
             url: string;
         };
+        ChatMessage: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            role: "user" | "assistant";
+            content: string;
+            /** @enum {string|null} */
+            myRating: "up" | "down" | null;
+        };
         ChatExpertInfo: {
             name: string;
             creatorNickname: string | null;
             knowledgeSize: number;
             priceCents: number;
             trialRemaining: number;
+            history: components["schemas"]["ChatMessage"][];
         };
         /** @description SSE 事件流，协议见 contracts/README.md */
         ChatStream: string;
         ChatInput: {
             question: string;
+        };
+        /** @enum {string} */
+        Rating: "up" | "down";
+        FeedbackResult: {
+            rating: components["schemas"]["Rating"];
+        };
+        FeedbackInput: {
+            /** Format: uuid */
+            messageId: string;
+            rating: components["schemas"]["Rating"];
+            comment?: string;
         };
         ModelItem: {
             content: string;
@@ -1551,6 +1715,24 @@ export interface components {
             shareUrl: string;
             /** Format: date-time */
             publishedAt: string;
+        };
+        Blindspot: {
+            /** Format: uuid */
+            messageId: string;
+            question: string;
+            confidence: number | null;
+            /** @enum {string} */
+            reason: "no_context" | "low_confidence";
+            createdAt: string;
+        };
+        ExpertStats: {
+            answers: number;
+            satisfaction: number | null;
+            upVotes: number;
+            downVotes: number;
+            revenueCents: number;
+            blindspots: number;
+            recentBlindspots: components["schemas"]["Blindspot"][];
         };
     };
     responses: never;

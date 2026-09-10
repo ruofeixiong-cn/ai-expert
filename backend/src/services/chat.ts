@@ -70,6 +70,13 @@ export async function fanExists(userId: string) {
 
 // ─── 专家信息与试聊额度 ──────────────────────────────────────────────────────
 
+type HistoryRow = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  my_rating: "up" | "down" | null;
+};
+
 export async function getChatExpert(slug: string, fanUserId: string | null) {
   const { expertId, tenantId } = await resolveSlug(slug);
 
@@ -92,12 +99,43 @@ export async function getChatExpert(slug: string, fanUserId: string | null) {
     );
 
     const used = fanUserId ? await countUsed(tx, expertId, fanUserId) : 0;
+
+    /*
+     * 历史消息。M3 漏了这个：粉丝关掉页面再打开，屏幕空空如也，
+     * 却显示「剩余 1 条」—— 额度是按库里的回答数算的，屏幕不是。
+     *
+     * my_rating 一起带出来，否则刷新之后赞/踩按钮全部回到未选中状态，
+     * 粉丝会以为没点成功、再点一遍。
+     */
+    const history = fanUserId
+      ? (
+          await tx.execute<HistoryRow>(sql`
+            SELECT m.id, m.role, m.content,
+                   (SELECT fb.rating FROM feedbacks fb
+                     WHERE fb.message_id = m.id AND fb.fan_user_id = ${fanUserId}) AS my_rating
+            FROM messages m
+            JOIN conversations c ON c.id = m.conversation_id
+            WHERE c.expert_id = ${expertId} AND c.fan_user_id = ${fanUserId}
+            ORDER BY m.seq DESC
+            LIMIT 50
+          `)
+        )
+          .map((r) => ({
+            id: r.id,
+            role: r.role,
+            content: r.content,
+            myRating: r.my_rating,
+          }))
+          .reverse()
+      : [];
+
     return {
       name: e.name,
       creatorNickname: owner?.nickname ?? null,
       knowledgeSize: e.knowledgeSize,
       priceCents: e.priceCents,
       trialRemaining: Math.max(0, e.freeTrial - used),
+      history,
     };
   });
 }
@@ -127,6 +165,14 @@ export type ChatSession = {
   tenantId: string;
   conversationId: string;
   userMessageId: string;
+  /**
+   * 这条回答将来的主键，提问时就先定好。
+   *
+   * 传给 agent，由它原样回显在 meta 事件里，前端拿去打分。
+   * 【不能让 agent 自己生成】：那个 id 不指向 messages 表里的任何一行，
+   * 反馈接口稳定 404。落库是 backend 的事，主键当然也归它。
+   */
+  assistantMessageId: string;
 };
 
 /**
@@ -176,7 +222,13 @@ export async function beginChat(
       .returning({ id: messages.id });
     if (!msg) throw new AppError(Code.INTERNAL, "记录提问失败", 500);
 
-    return { expertId, tenantId, conversationId: conv.id, userMessageId: msg.id };
+    return {
+      expertId,
+      tenantId,
+      conversationId: conv.id,
+      userMessageId: msg.id,
+      assistantMessageId: crypto.randomUUID(),
+    };
   });
 }
 
@@ -208,13 +260,17 @@ export async function settleChat(s: ChatSession, r: Settlement) {
         and(
           eq(messages.conversationId, s.conversationId),
           eq(messages.role, "assistant"),
-          sql`${messages.createdAt} > (select created_at from messages where id = ${s.userMessageId})`,
+          // 用 seq 不用 created_at：同事务插入的两条消息时间戳相同，
+          // `>` 会漏判。见 drizzle/0013_message_seq.sql。
+          sql`${messages.seq} > (select seq from messages where id = ${s.userMessageId})`,
         ),
       )
       .limit(1);
     if (existing) return; // 已经结算过
 
     await tx.insert(messages).values({
+      // 必须用提问时就定好的那个 id —— meta 事件已经把它发给前端了
+      id: s.assistantMessageId,
       tenantId: s.tenantId,
       conversationId: s.conversationId,
       role: "assistant",
