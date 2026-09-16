@@ -69,6 +69,12 @@ make dev                      # 同时起 frontend / backend / agent / worker
 
 打开 <http://localhost:5173> ，注册一个博主账号即可。
 
+> 2026-09-16 之前建过数据卷的，先 `docker compose down -v` 再 `make up`：
+> 角色布局变了（`app_owner` 不再是超级用户，见
+> [ADR-008](docs/adr/008-db-role-fidelity-and-share-lookup.md)），
+> 而建角色的脚本只在首次创建数据卷时执行。
+> 生产环境需要 DBA 用高权限账号先执行一次 `infra/postgres/init/01-roles.sql`，再跑迁移。
+
 **没有百炼 API Key 也能跑通全流程**：向量化和七维提炼都有确定性的假实现，
 由 `EMBEDDING_PROVIDER` / `EXTRACT_PROVIDER` 控制（默认 `auto`：有 key 用真的，
 没 key 自动退回假的）。
