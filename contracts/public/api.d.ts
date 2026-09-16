@@ -1711,6 +1711,8 @@ export interface components {
             /** @description 博主已确认的维度。未确认的维度按草稿「默认通过」。 */
             confirmedDimensions: components["schemas"]["Dimension"][];
             chunkCount: number;
+            /** @description 有效模型与线上快照不一致 = 博主改了但还没推到线上。还没上线过时为 false。前端据此决定要不要提醒他「改完要再点一次上线」（ADR-009）。 */
+            hasUnpublishedChanges: boolean;
         };
         ConfirmDimensionInput: {
             /** @description 该维度的最终内容。博主可增删改；提交即视为确认这一维度。 */

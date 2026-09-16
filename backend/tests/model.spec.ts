@@ -268,6 +268,75 @@ describe("七维专家模型", () => {
     });
   });
 
+  // ★ F01 后半截 · ADR-009：线上快照是否过期
+  describe("有没有没推上线的改动", () => {
+    const model = (token: string, id: string) =>
+      call(`/api/experts/${id}/model`, { token }).then(json).then((r) => r.data);
+
+    it("还没上线过时为 false —— 那时该提示的是「去上线」", async () => {
+      const { token, id } = await setup();
+      expect((await model(token, id)).hasUnpublishedChanges).toBe(false);
+    });
+
+    it("刚上线完，线上就是最新的", async () => {
+      const { token, id } = await setup();
+      await call(`/api/experts/${id}/publish`, { method: "POST", token });
+
+      expect((await model(token, id)).hasUnpublishedChanges).toBe(false);
+    });
+
+    it("上线后改了内容 → true", async () => {
+      const { token, id } = await setup();
+      await call(`/api/experts/${id}/publish`, { method: "POST", token });
+
+      await call(`/api/experts/${id}/model/beliefs`, {
+        method: "PUT", token,
+        body: JSON.stringify({
+          items: [{ content: "上线之后我又改了", confidence: 1, evidenceChunkIds: [], origin: "creator" }],
+        }),
+      });
+
+      expect((await model(token, id)).hasUnpublishedChanges).toBe(true);
+    });
+
+    it("再点一次上线，提示消失", async () => {
+      const { token, id } = await setup();
+      await call(`/api/experts/${id}/publish`, { method: "POST", token });
+      await call(`/api/experts/${id}/model/beliefs`, {
+        method: "PUT", token,
+        body: JSON.stringify({
+          items: [{ content: "改了一次", confidence: 1, evidenceChunkIds: [], origin: "creator" }],
+        }),
+      });
+      expect((await model(token, id)).hasUnpublishedChanges).toBe(true);
+
+      await call(`/api/experts/${id}/publish`, { method: "POST", token });
+      expect((await model(token, id)).hasUnpublishedChanges).toBe(false);
+    });
+
+    it("重新生成的草稿进入有效模型 → true（时间戳比不出来的那一半）", async () => {
+      const { token, id, tenantId } = await setup();
+      await call(`/api/experts/${id}/publish`, { method: "POST", token });
+
+      // 未确认的维度按「默认通过」用草稿，所以草稿一变，线上快照就旧了
+      await tenantTx(tenantId, (tx) =>
+        tx
+          .update(expertModelDrafts)
+          .set({
+            model: {
+              persona: [{ content: "重新生成后的说法", confidence: 1, evidenceChunkIds: [] }],
+              knowledge: [], beliefs: [], methodology: [], decisionRules: [],
+              boundaries: [{ content: "不冒充本人", kind: "impersonation" }],
+              examples: [],
+            },
+          })
+          .where(eq(expertModelDrafts.expertId, id)),
+      );
+
+      expect((await model(token, id)).hasUnpublishedChanges).toBe(true);
+    });
+  });
+
   // ★ C9
   it("跨租户读取 / 确认 / 上线他人的专家都返回 404", async () => {
     const { id } = await setup();

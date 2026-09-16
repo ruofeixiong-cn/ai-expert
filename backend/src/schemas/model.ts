@@ -115,6 +115,11 @@ export const ModelView = z
     }),
     /** 草稿基于多少个切片生成 —— 让博主知道 AI 读了多少内容。 */
     chunkCount: z.number().int(),
+    hasUnpublishedChanges: z.boolean().openapi({
+      description:
+        "有效模型与线上快照不一致 = 博主改了但还没推到线上。还没上线过时为 false。" +
+        "前端据此决定要不要提醒他「改完要再点一次上线」（ADR-009）。",
+    }),
   })
   .openapi("ModelView");
 

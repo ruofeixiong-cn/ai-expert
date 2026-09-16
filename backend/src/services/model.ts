@@ -48,6 +48,8 @@ async function load(tenantId: string, expertId: string) {
         name: experts.name,
         confirmedModel: experts.confirmedModel,
         confirmedDimensions: experts.confirmedDimensions,
+        // 线上快照整份取回来，用于判断"改了但还没推上线"（ADR-009）
+        publishedModel: experts.expertModel,
         shareSlug: experts.shareSlug,
         publishedAt: experts.publishedAt,
       })
@@ -66,16 +68,42 @@ async function load(tenantId: string, expertId: string) {
   });
 }
 
+/**
+ * 内容级比对：递归按 key 排序再 stringify（ADR-009）。
+ *
+ * 两边今天都来自 jsonb，Postgres 本来就会重排 key，直接 stringify 够用 ——
+ * 但这个前提太脆：哪天有一处改成在 JS 里拼对象，就会开始报假阳性，
+ * 症状是"提示一直在，点了上线也不消失"，很难查。规范化一次就不用再想。
+ */
+function canonical(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(canonical);
+  if (v && typeof v === "object") {
+    return Object.fromEntries(
+      Object.entries(v as Record<string, unknown>)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([k, val]) => [k, canonical(val)]),
+    );
+  }
+  return v;
+}
+
+const sameModel = (a: unknown, b: unknown) =>
+  JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+
 function view(e: Awaited<ReturnType<typeof load>>) {
   const draft = (e.draft?.model ?? null) as Model | null;
   const confirmed = (e.expert.confirmedModel ?? null) as Partial<Model> | null;
   const dims = e.expert.confirmedDimensions ?? [];
+  const published = e.expert.publishedModel ?? null;
+  const effectiveModel = effective(draft, confirmed, dims);
   return {
     draft,
     generatedAt: e.draft?.generatedAt?.toISOString() ?? null,
-    confirmed: effective(draft, confirmed, dims),
+    confirmed: effectiveModel,
     confirmedDimensions: dims as Dim[],
     chunkCount: e.draft?.chunkCount ?? 0,
+    // 没上线过就没有"没推上线的改动"可言 —— 那时该提示的是"去上线"
+    hasUnpublishedChanges: published !== null && !sameModel(effectiveModel, published),
   };
 }
 
