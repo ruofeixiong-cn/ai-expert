@@ -120,6 +120,13 @@
       "when": 1789062369184,
       "tag": "0016_build_jobs_one_active",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789568620014,
+      "tag": "0017_share_resolver_role",
+      "breakpoints": true
     }
   ]
 }
