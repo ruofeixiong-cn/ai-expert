@@ -4,7 +4,7 @@ import { errorMessage } from "@/api/client";
 import { Alert, Button, Card, Input, Textarea } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import {
-  BOUNDARY_KIND_LABEL, DIMENSIONS, emptyItem, isEvidenceless, validateItems,
+  BOUNDARY_KIND_LABEL, DIMENSIONS, emptyItem, isAiInferred, isCreatorWritten, validateItems,
   type AnyItem, type Dim,
 } from "./dimensions";
 
@@ -38,15 +38,27 @@ export function DimensionCard({
     if (!dirty) setDraft(items);
   }, [items, dirty]);
 
-  const flagged = draft.filter(isEvidenceless).length;
+  const flagged = draft.filter(isAiInferred).length;
 
   const edit = (next: (d: AnyItem[]) => AnyItem[]) => {
     setDirty(true);
     setError(null);
     setDraft(next);
   };
+
+  /**
+   * 博主动过的条目就归他（ADR-003 的语义表最后一行）：出处保留作参考，
+   * 但不再标红 —— 他已经亲自过目并认领了这句话。
+   * 禁区没有 origin 字段（它是平台模板，不是提炼出来的），不要给它加。
+   */
   const patch = (i: number, next: Partial<AnyItem>) =>
-    edit((d) => d.map((it, idx) => (idx === i ? ({ ...it, ...next } as AnyItem) : it)));
+    edit((d) =>
+      d.map((it, idx) =>
+        idx === i
+          ? ({ ...it, ...next, ...(dim === "boundaries" ? {} : { origin: "creator" }) } as AnyItem)
+          : it,
+      ),
+    );
   const remove = (i: number) => edit((d) => d.filter((_, idx) => idx !== i));
   const add = () => { setOpen(true); edit((d) => [...d, emptyItem(dim)]); };
 
@@ -134,16 +146,14 @@ export function DimensionCard({
           {error && <div className="mt-3"><Alert>{error}</Alert></div>}
 
           <div className="mt-4 flex items-center justify-between gap-3">
-            {dim === "examples" ? (
-              // 契约要求样本至少有一条原文出处（ExampleItem.evidenceChunkIds.min(1)），
-              // 手动加的必然没有 —— 给按钮只会让博主填完再撞一个 400。
-              // 等 ADR-003 的来源字段落地后再放开。
-              <span className="text-xs text-ink-400">样本只从你的原文里抽取，暂不支持手动添加</span>
-            ) : (
-              <Button variant="ghost" size="sm" type="button" onClick={add}>
-                <Plus className="size-4" /> 添加一条
-              </Button>
-            )}
+            {/*
+              「添加一条」在 examples 上曾经被拿掉：契约要求样本必须有出处，
+              手动加的必然没有，填完只会撞一个 400（F03）。
+              ADR-003 的 origin 落地后，博主手写的样本不再要求出处，入口恢复。
+            */}
+            <Button variant="ghost" size="sm" type="button" onClick={add}>
+              <Plus className="size-4" /> 添加一条
+            </Button>
             <Button
               size="sm"
               type="button"
@@ -168,7 +178,8 @@ function ItemRow({
   onChange: (next: Partial<AnyItem>) => void;
   onRemove: () => void;
 }) {
-  const flagged = isEvidenceless(item);
+  const flagged = isAiInferred(item);
+  const mine = isCreatorWritten(item);
 
   return (
     <div
@@ -215,13 +226,15 @@ function ItemRow({
            * 所以不能只是标个色 —— 要明说【原文里找不到出处】，
            * 让博主知道该盯哪一条，也让他知道我们没有拿他的名义瞎编。
            *
-           * ⚠️ 已知误判：博主手动添加的条目也没有出处，会被误标成 AI 推断。
-           *    契约里没有区分来源的字段，等 backend 补齐，见 docs/adr/003。
+           * 判定必须排除博主自己写的条目（origin = creator，ADR-003）：
+           * 把博主本人的话指认成 AI 编造，比不标还糟。
            */
           <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
             <AlertTriangle className="size-3.5" />
             AI 推断的，你的原文里没有这句 —— 请核对或删掉
           </span>
+        ) : mine ? (
+          <span className="text-xs text-ink-400">你写的</span>
         ) : (
           <span className="text-xs text-ink-400">
             出自你的 {(item as { evidenceChunkIds: string[] }).evidenceChunkIds.length} 段原文

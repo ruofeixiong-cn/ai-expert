@@ -59,15 +59,25 @@ export const BOUNDARY_KIND_LABEL: Record<string, string> = {
   out_of_scope: "立场越界",
 };
 
-export const isEvidenceless = (item: AnyItem) =>
-  "evidenceChunkIds" in item && item.evidenceChunkIds.length === 0;
+/** 博主手写或改写过的条目（ADR-003）。存量数据没有这个字段，缺省视为 AI 写的。 */
+export const isCreatorWritten = (item: AnyItem) =>
+  "origin" in item && item.origin === "creator";
+
+/**
+ * 这一条是不是【AI 脑补】—— 标红的唯一依据。
+ *
+ * 只看"证据为空"是不够的：博主自己写的条目天然没有出处，
+ * 那样会把博主本人的话指认成 AI 编造（F02）。必须先排除 creator。
+ */
+export const isAiInferred = (item: AnyItem) =>
+  !isCreatorWritten(item) && "evidenceChunkIds" in item && item.evidenceChunkIds.length === 0;
 
 /**
  * 提交前按契约的约束先查一遍，别让博主等一个必然的 400（F03）。
  * 返回第一条问题的中文说明；没有问题返回 null。
  *
  * ⚠️ 这里是手抄契约里的 `min(1)`：ModelItem / BoundaryItem 的 content 非空，
- *    ExampleItem 的 question / answer 非空且 evidenceChunkIds 至少一条。
+ *    ExampleItem 的 question / answer 非空，且【AI 提炼的】样本 evidenceChunkIds 至少一条。
  *    等契约能生成 zod 约束（回顾文档 §6.3），改成直接用生成的 schema ——
  *    手抄的约束迟早会和后端对不上。
  */
@@ -77,7 +87,10 @@ export function validateItems(dim: Dim, items: AnyItem[]): string | null {
     if (dim === "examples") {
       const e = it as ExampleItem;
       if (!e.question.trim() || !e.answer.trim()) return `第 ${n} 条的问题或回答还没填`;
-      if (e.evidenceChunkIds.length === 0) return `第 ${n} 条没有原文出处。样本只能从原文抽取，请删掉它`;
+      // 博主自己写的样本没有出处是正常的；AI 提炼的必须有，否则就是编的（ADR-003）
+      if (!isCreatorWritten(e) && e.evidenceChunkIds.length === 0) {
+        return `第 ${n} 条没有原文出处。AI 提炼的样本只能来自原文，请删掉它`;
+      }
     } else if (!(it as { content: string }).content.trim()) {
       return `第 ${n} 条还没填内容，填上或删掉再确认`;
     }
@@ -85,8 +98,11 @@ export function validateItems(dim: Dim, items: AnyItem[]): string | null {
   return null;
 }
 
+/** 新加的条目一律是博主写的 —— 这是 origin 字段存在的全部意义。 */
 export function emptyItem(dim: Dim): AnyItem {
   if (dim === "boundaries") return { content: "", kind: "out_of_scope" };
-  if (dim === "examples") return { question: "", answer: "", evidenceChunkIds: [] };
-  return { content: "", confidence: 1, evidenceChunkIds: [] };
+  if (dim === "examples") {
+    return { question: "", answer: "", evidenceChunkIds: [], origin: "creator" };
+  }
+  return { content: "", confidence: 1, evidenceChunkIds: [], origin: "creator" };
 }
