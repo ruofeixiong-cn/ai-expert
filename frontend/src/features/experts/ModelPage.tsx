@@ -5,7 +5,7 @@ import { ArrowLeft, Check, Copy, RefreshCw, Rocket, Sparkles } from "lucide-reac
 import { api, errorMessage } from "@/api/client";
 import { Alert, Button, Card, Spinner } from "@/components/ui";
 import { DimensionCard } from "./DimensionCard";
-import { DIMENSIONS, isEvidenceless, type AnyItem, type Dim, type Model } from "./dimensions";
+import { DIMENSIONS, isAiInferred, type AnyItem, type Dim, type Model } from "./dimensions";
 
 export default function ModelPage() {
   const { id = "" } = useParams();
@@ -96,7 +96,7 @@ export default function ModelPage() {
   }
 
   const flaggedTotal = DIMENSIONS.reduce(
-    (n, d) => n + (effective[d.key] as AnyItem[]).filter(isEvidenceless).length,
+    (n, d) => n + (effective[d.key] as AnyItem[]).filter(isAiInferred).length,
     0,
   );
   const boundariesEmpty = effective.boundaries.length === 0;
