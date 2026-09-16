@@ -185,16 +185,27 @@ export default function ModelPage() {
               而这一段的文案一直在让博主「改完再点一次上线」。
               publish 接口本身支持重复调用：短链不变，只更新线上快照。
             */}
+            {/*
+              提示分两句（ADR-009）：改了没推 vs 线上已是最新。
+              第一版这句话是无条件的，于是"改完没推"和"什么都没改"长得一模一样 ——
+              该提醒的时候不显眼，不该提醒的时候一直在唠叨。
+            */}
             <div className="mt-3 flex items-center justify-between gap-4">
-              <p className="text-xs text-ink-400">
-                粉丝用的是你上一次上线时的版本。之后的修改不会自动生效，改完点右边的按钮推到线上。
-              </p>
+              {m.hasUnpublishedChanges ? (
+                <p className="text-xs font-medium text-amber-700">
+                  你有修改还没推到线上。粉丝现在拿到的仍是上一次上线的版本 —— 点右边的按钮生效。
+                </p>
+              ) : (
+                <p className="text-xs text-ink-400">
+                  线上就是你现在看到的版本。之后再改的话，记得回来点一次「更新线上版本」。
+                </p>
+              )}
               <Button
-                variant="outline"
+                variant={m.hasUnpublishedChanges ? "primary" : "outline"}
                 size="sm"
                 className="shrink-0"
                 loading={publish.isPending}
-                disabled={boundariesEmpty}
+                disabled={boundariesEmpty || !m.hasUnpublishedChanges}
                 onClick={() =>
                   publish.mutate(undefined, {
                     onSuccess: () => setNotice("线上已更新为当前版本，粉丝下一次提问就会用上。"),
