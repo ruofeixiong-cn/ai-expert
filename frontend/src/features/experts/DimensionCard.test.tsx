@@ -85,7 +85,7 @@ describe("DimensionCard 的确认", () => {
     clickConfirm();
 
     expect(onConfirm).not.toHaveBeenCalled();
-    expect(screen.getByText(/第 2 条还没填/)).toBeInTheDocument();
+    expect(screen.getByText(/第 2 条的内容还没填/)).toBeInTheDocument();
   });
 
 });
