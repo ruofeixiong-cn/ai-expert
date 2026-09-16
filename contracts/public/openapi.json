@@ -976,6 +976,10 @@
           },
           "chunkCount": {
             "type": "integer"
+          },
+          "hasUnpublishedChanges": {
+            "type": "boolean",
+            "description": "有效模型与线上快照不一致 = 博主改了但还没推到线上。还没上线过时为 false。前端据此决定要不要提醒他「改完要再点一次上线」（ADR-009）。"
           }
         },
         "required": [
@@ -983,7 +987,8 @@
           "generatedAt",
           "confirmed",
           "confirmedDimensions",
-          "chunkCount"
+          "chunkCount",
+          "hasUnpublishedChanges"
         ]
       },
       "ConfirmDimensionInput": {
