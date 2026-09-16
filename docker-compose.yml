@@ -3,16 +3,18 @@ services:
     # 官方 postgres 镜像不带 pgvector，必须用这个
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_USER: app_owner
-      POSTGRES_PASSWORD: owner_dev_pw
+      # 初始化用独立的超级用户。app_owner 必须是普通角色，否则它会绕过
+      # FORCE ROW LEVEL SECURITY，本地权限比生产大，测试就失去意义（ADR-008）。
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_dev_pw
       POSTGRES_DB: ai_expert
     ports: ["5432:5432"]
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # 只在首次创建数据卷时执行：建扩展 + 建两个运行时角色
+      # 只在首次创建数据卷时执行：建扩展 + 建角色 + 把属主权交给 app_owner
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app_owner -d ai_expert"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ai_expert"]
       interval: 3s
       timeout: 3s
       retries: 20

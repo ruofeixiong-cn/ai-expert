@@ -23,7 +23,7 @@ install: ## 安装三个服务的依赖
 up: ## 起本地基础设施（postgres + redis）
 	$(DOCKER) compose up -d
 	@echo "等待 postgres 就绪..."
-	@until $(DOCKER) compose exec -T postgres pg_isready -U app_owner -d ai_expert >/dev/null 2>&1; do sleep 1; done
+	@until $(DOCKER) compose exec -T postgres pg_isready -U postgres -d ai_expert >/dev/null 2>&1; do sleep 1; done
 	@echo "✓ postgres ready"
 
 down: ## 停掉基础设施（保留数据卷）
