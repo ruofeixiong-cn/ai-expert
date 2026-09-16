@@ -1,5 +1,9 @@
 node_modules/
 dist/
+
+# Claude Code：skills 与 launch.json 入库（团队共享），
+# 但 settings.local.json 是每个人自己的权限授权记录，不该推给别人。
+.claude/settings.local.json
 .venv/
 __pycache__/
 *.pyc
