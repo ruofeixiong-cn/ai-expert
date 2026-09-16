@@ -52,10 +52,15 @@ contract: ## 重新生成两份 OpenAPI 与 TS 类型
 	cd agent && uv run python scripts/export_openapi.py
 	pnpm exec openapi-typescript contracts/public/openapi.json        -o contracts/public/api.d.ts
 	pnpm exec openapi-typescript contracts/internal/agent-openapi.json -o contracts/internal/agent.d.ts
+	node scripts/gen-contract-zod.mjs
 
 contract-check: contract ## CI 守门：契约与代码不同步则失败
 	@git diff --exit-code contracts/ || \
 	  (echo ""; echo "✗ contracts/ 与代码不同步 —— 请提交 make contract 的产物"; exit 1)
+	@# git diff 看不见【未跟踪】的文件：新增一个产物却忘了 git add，上面那句会静默放行
+	@test -z "$$(git ls-files --others --exclude-standard contracts/)" || \
+	  (echo ""; echo "✗ contracts/ 下有未提交的新产物："; \
+	   git ls-files --others --exclude-standard contracts/; exit 1)
 	@echo "✓ contracts 同步"
 
 typecheck: ## 三方类型检查
@@ -87,10 +92,24 @@ eval: ## 黄金问答集跑分（REAL_LLM=1 走真实模型；SWEEP=1 追加阈�
 eval-diff: ## 对比最近两份评测快照
 	cd agent && uv run python scripts/eval.py --diff
 
-verify: test e2e eval contract-check typecheck ## 提交前全量验证
+verify: ## 提交前全量验证（每一项都跑完，最后汇总）
+# ⚠️ 不要写成 `verify: test e2e eval contract-check typecheck`。
+# 那样任何一项失败，make 立刻停 —— 后面的检查【一次都没跑】，而输出看上去只是"有个错"。
+# 真实事故：contract-check 因为产物没提交而失败，typecheck 因此被跳过，
+# 一个类型错误就这样进了 main（2026-09-16）。
+# 所以这里逐项跑、逐项记，最后一起报。快的排前面，反馈早一点。
+#
 # eval 进 verify 是刻意的：假实现下分数没有意义，但【流程必须跑通】——
 # 否则 eval.py 会慢慢腐烂成一个"只有想起来时才手动跑"的脚本，
 # 而那正是所有评测工具的死法。真实分数由 REAL_LLM=1 make eval 手动产出。
+	@fail=""; \
+	for t in typecheck contract-check test e2e eval; do \
+	  echo ""; echo "──────── make $$t ────────"; \
+	  $(MAKE) $$t || fail="$$fail $$t"; \
+	done; \
+	echo ""; \
+	if [ -n "$$fail" ]; then echo "✗ verify 失败：$$fail"; exit 1; fi; \
+	echo "✓ verify 全绿"
 
 clean: ## 清干净（含数据卷，会删数据）
 	$(DOCKER) compose down -v

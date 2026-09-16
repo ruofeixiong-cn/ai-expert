@@ -5,10 +5,17 @@
 
 ```
 backend  --(src/openapi.ts)-------->  public/openapi.json
-                                        --(openapi-typescript)-->  public/api.d.ts   ← frontend 消费
+                                        --(openapi-typescript)-->  public/api.d.ts   ← frontend 消费（类型）
+                                        --(gen-contract-zod.mjs)-> public/zod.ts     ← frontend 消费（约束）
 agent    --(scripts/export_openapi.py)--> internal/agent-openapi.json
                                         --(openapi-typescript)-->  internal/agent.d.ts ← backend 消费
 ```
+
+`api.d.ts` 给**类型**，`zod.ts` 给**运行期约束**（长度、范围、枚举、必填）。
+只有类型的时候，前端只能手抄后端的 `min(1)`，抄漏了类型检查照样全过、运行时必然 400 ——
+F03 就是这么来的。见 [ADR-007](../docs/adr/007-contract-zod-constraints.md)。
+
+**不要从 `zod.ts` 里 `z.infer` 类型**：一份契约两个类型来源，迟早对不上。类型只从 `api.d.ts` 取。
 
 | 契约 | 谁产出 | 谁消费 | 说明 |
 |---|---|---|---|
