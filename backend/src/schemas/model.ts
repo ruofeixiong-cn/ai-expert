@@ -12,6 +12,20 @@ export const Dimension = z
   .openapi("Dimension");
 
 /**
+ * 这一条是谁写的（ADR-003）。
+ *
+ * 没有这个字段的时候，前端只能用「证据为空」判定 AI 推断，
+ * 于是博主在确认页亲手加的条目被标成"AI 推断的，你的原文里没有这句" ——
+ * M2 最核心的信任界面，指认方向正好反了。
+ *
+ * 缺省是 `ai`：已有的 jsonb 草稿与快照里没有这个字段，不需要数据迁移 ——
+ * 博主手写的能力是随这个字段一起上线的，此前的存量条目必然都是 AI 写的。
+ */
+export const ItemOrigin = z.enum(["ai", "creator"]).openapi("ItemOrigin", {
+  description: "ai = AI 提炼；creator = 博主手写或改写过。缺省视为 ai。",
+});
+
+/**
  * 普通条目。
  *
  * `evidenceChunkIds` 是【防 AI 过度推断】的抓手（产品文档 §8.3 点名的最大的坑）：
@@ -19,14 +33,18 @@ export const Dimension = z
  *
  * 这比"低置信度标红"更硬：置信度是模型的【自评】，它对自己编的内容也可能很自信；
  * 证据链是【可验证的事实】，我们会拿它去比对该专家真实存在的切片。
+ *
+ * ⚠️ 标红的判定是 `origin !== "creator" && evidenceChunkIds 为空`，
+ * 不能只看证据 —— 博主自己写的东西没有"出处"是正常的，那不是脑补。
  */
 export const ModelItem = z
   .object({
     content: z.string().min(1),
     confidence: z.number().min(0).max(1),
     evidenceChunkIds: z.array(z.string().uuid()).openapi({
-      description: "出自哪几个知识切片。为空 = AI 推断，原文无出处，前端标红。",
+      description: "出自哪几个知识切片。为空【且 origin 是 ai】= AI 推断，前端标红。",
     }),
+    origin: ItemOrigin.default("ai"),
   })
   .openapi("ModelItem");
 
@@ -42,12 +60,24 @@ export const BoundaryItem = z
   .object({ content: z.string().min(1), kind: BoundaryKind })
   .openapi("BoundaryItem");
 
-/** 真实问答样本。只能从原文【抽取】，绝不编造 —— 所以证据不能为空。 */
+/**
+ * 真实问答样本。
+ *
+ * AI 提炼的样本只能从原文【抽取】，绝不编造 —— 所以 `origin = "ai"` 时证据不能为空。
+ * 但博主本人写的样本天然没有"出处"：把 min(1) 无条件加在这里，
+ * 等于博主永远无法手动补一条问答（提交必然 400），而"真实样本"恰恰是最该由本人补的一维。
+ * 所以约束按来源分叉（ADR-003）。
+ */
 export const ExampleItem = z
   .object({
     question: z.string().min(1),
     answer: z.string().min(1),
-    evidenceChunkIds: z.array(z.string().uuid()).min(1),
+    evidenceChunkIds: z.array(z.string().uuid()),
+    origin: ItemOrigin.default("ai"),
+  })
+  .refine((v) => v.origin === "creator" || v.evidenceChunkIds.length >= 1, {
+    path: ["evidenceChunkIds"],
+    message: "AI 提炼的样本必须带出处；博主手写的可以没有",
   })
   .openapi("ExampleItem");
 
