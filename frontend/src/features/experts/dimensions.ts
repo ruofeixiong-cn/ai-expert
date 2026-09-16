@@ -1,4 +1,6 @@
 import type { Schema } from "@/api/client";
+// 运行期约束的唯一来源，和 api.d.ts 一样是 `make contract` 的产物（ADR-007）
+import * as contract from "../../../../contracts/public/zod";
 
 /**
  * 七维的形状从 ModelView.draft 推导 —— 那是契约里它唯一出现的地方。
@@ -72,27 +74,64 @@ export const isCreatorWritten = (item: AnyItem) =>
 export const isAiInferred = (item: AnyItem) =>
   !isCreatorWritten(item) && "evidenceChunkIds" in item && item.evidenceChunkIds.length === 0;
 
+/** 每个维度对应契约里的哪种条目 —— 和后端 validateItems 的分派一致。 */
+const ITEM_SCHEMA = {
+  boundaries: contract.BoundaryItem,
+  examples: contract.ExampleItem,
+  default: contract.ModelItem,
+} as const;
+
+const FIELD_LABEL: Record<string, string> = {
+  content: "内容",
+  question: "问题",
+  answer: "回答",
+  evidenceChunkIds: "原文出处",
+  kind: "边界类型",
+  confidence: "置信度",
+};
+
+type Issue = { code: string; path: PropertyKey[]; minimum?: unknown; maximum?: unknown };
+
+/** 把 zod 的英文报错翻成博主看得懂的一句话。 */
+function explain(n: number, issue: Issue): string {
+  const field = FIELD_LABEL[String(issue.path[0] ?? "")] ?? String(issue.path[0] ?? "内容");
+  if (issue.code === "too_small") {
+    return Number(issue.minimum) <= 1
+      ? `第 ${n} 条的${field}还没填，填上或删掉再确认`
+      : `第 ${n} 条的${field}至少要 ${issue.minimum} 个`;
+  }
+  if (issue.code === "too_big") return `第 ${n} 条的${field}超出上限（最多 ${issue.maximum}）`;
+  if (issue.code === "invalid_type") return `第 ${n} 条缺少${field}`;
+  return `第 ${n} 条的${field}不符合要求`;
+}
+
 /**
  * 提交前按契约的约束先查一遍，别让博主等一个必然的 400（F03）。
  * 返回第一条问题的中文说明；没有问题返回 null。
  *
- * ⚠️ 这里是手抄契约里的 `min(1)`：ModelItem / BoundaryItem 的 content 非空，
- *    ExampleItem 的 question / answer 非空，且【AI 提炼的】样本 evidenceChunkIds 至少一条。
- *    等契约能生成 zod 约束（回顾文档 §6.3），改成直接用生成的 schema ——
- *    手抄的约束迟早会和后端对不上。
+ * 约束来自 `contracts/public/zod.ts`（`make contract` 生成，见 ADR-007）——
+ * 以前这里是【手抄】后端的 min/max，抄漏了类型检查照样全过、运行时必然 400。
+ * 现在后端加一条约束，这里自动就有。
+ *
+ * ⚠️ 唯一还需要手写的是【条件约束】：ExampleItem 的证据要求随 origin 分叉，
+ *    这表达不进 JSON Schema，所以生成的 schema 里没有（ADR-003 / ADR-007）。
  */
 export function validateItems(dim: Dim, items: AnyItem[]): string | null {
+  const schema = dim in ITEM_SCHEMA
+    ? ITEM_SCHEMA[dim as keyof typeof ITEM_SCHEMA]
+    : ITEM_SCHEMA.default;
+
   for (const [i, it] of items.entries()) {
     const n = i + 1;
+    const parsed = schema.safeParse(it);
+    if (!parsed.success) return explain(n, parsed.error.issues[0] as Issue);
+
+    // 条件约束，生成不出来：博主自己写的样本没有出处是正常的，AI 提炼的必须有
     if (dim === "examples") {
       const e = it as ExampleItem;
-      if (!e.question.trim() || !e.answer.trim()) return `第 ${n} 条的问题或回答还没填`;
-      // 博主自己写的样本没有出处是正常的；AI 提炼的必须有，否则就是编的（ADR-003）
       if (!isCreatorWritten(e) && e.evidenceChunkIds.length === 0) {
         return `第 ${n} 条没有原文出处。AI 提炼的样本只能来自原文，请删掉它`;
       }
-    } else if (!(it as { content: string }).content.trim()) {
-      return `第 ${n} 条还没填内容，填上或删掉再确认`;
     }
   }
   return null;
