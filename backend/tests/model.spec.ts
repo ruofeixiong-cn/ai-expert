@@ -270,8 +270,9 @@ describe("七维专家模型", () => {
 
   // ★ F01 后半截 · ADR-009：线上快照是否过期
   describe("有没有没推上线的改动", () => {
-    const model = (token: string, id: string) =>
-      call(`/api/experts/${id}/model`, { token }).then(json).then((r) => r.data);
+    // call() 的返回类型是 Response | Promise<Response>，不能直接 .then（tsc 会拒绝）
+    const model = async (token: string, id: string) =>
+      (await json(await call(`/api/experts/${id}/model`, { token }))).data;
 
     it("还没上线过时为 false —— 那时该提示的是「去上线」", async () => {
       const { token, id } = await setup();
