@@ -145,8 +145,10 @@ export const getModelRoute = createRoute({
   summary: "获取七维专家模型（AI 草稿 + 博主定稿）",
   description:
     "draft 是 AI 生成的草稿，confirmed 是博主确认过的定稿。\n\n" +
-    "条目的 evidenceChunkIds 为空表示【原文里找不到出处，是 AI 推断的】—— " +
-    "前端必须标红。这是防过度推断的核心机制，见产品文档 §8.3。",
+    "条目的 evidenceChunkIds 为空【且 origin 是 ai】表示原文里找不到出处、是 AI 推断的 —— " +
+    "前端必须标红。这是防过度推断的核心机制，见产品文档 §8.3。\n\n" +
+    "origin 为 creator 的条目是博主手写或改写的，没有出处是正常的，不标红（ADR-003）。" +
+    "存量数据没有这个字段，缺省视为 ai。",
   security: bearer,
   request: { params: z.object({ id: UuidParam }) },
   responses: { 200: json("七维模型", ModelView), ...authedErrors },

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { createApp } from "../src/app.js";
 import { closeDb, tenantTx } from "../src/db/client.js";
@@ -180,6 +181,91 @@ describe("七维专家模型", () => {
     // 线上快照仍然是上线那一刻的内容 —— 否则重新生成会悄悄改变
     // 付费粉丝拿到的东西
     expect((row!.published as any).persona[0].content).toBe("语气直接");
+  });
+
+  // ★ F02 / F03 · ADR-003：条目来源
+  //
+  // 修复前：判定「AI 推断」只看证据是否为空，于是博主亲手加的条目被标成
+  // "AI 推断的，你的原文里没有这句"；而「真实样本」要求证据 min(1)，
+  // 博主手动加一条必然 400。两件事同一个根因 —— 契约里区分不了来源。
+  describe("条目来源（origin）", () => {
+    it("不带 origin 提交 → 缺省是 ai", async () => {
+      const { token, id } = await setup();
+      const m = (await json(await call(`/api/experts/${id}/model/beliefs`, {
+        method: "PUT", token,
+        body: JSON.stringify({ items: [{ content: "没写来源", confidence: 1, evidenceChunkIds: [] }] }),
+      }))).data;
+
+      expect(m.confirmed.beliefs[0].origin).toBe("ai");
+    });
+
+    it("博主手写的条目：证据为空也不算 AI 推断", async () => {
+      const { token, id } = await setup();
+      const m = (await json(await call(`/api/experts/${id}/model/decisionRules`, {
+        method: "PUT", token,
+        body: JSON.stringify({
+          items: [{ content: "我自己补的决策规则", confidence: 1, evidenceChunkIds: [], origin: "creator" }],
+        }),
+      }))).data;
+
+      // 来源必须持久化 —— 存不住的话，刷新之后又会被指认成 AI 编造
+      expect(m.confirmed.decisionRules[0].origin).toBe("creator");
+      expect(m.confirmed.decisionRules[0].evidenceChunkIds).toEqual([]);
+    });
+
+    it("真实样本：博主手写的可以没有出处", async () => {
+      const { token, id } = await setup();
+      const res = await call(`/api/experts/${id}/model/examples`, {
+        method: "PUT", token,
+        body: JSON.stringify({
+          items: [{ question: "定投要不要择时", answer: "不要", evidenceChunkIds: [], origin: "creator" }],
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect((await json(res)).data.confirmed.examples[0].origin).toBe("creator");
+    });
+
+    it("真实样本：AI 提炼的仍然必须带出处，不许编造", async () => {
+      const { token, id } = await setup();
+      const res = await call(`/api/experts/${id}/model/examples`, {
+        method: "PUT", token,
+        body: JSON.stringify({
+          items: [{ question: "AI 编的问", answer: "AI 编的答", evidenceChunkIds: [], origin: "ai" }],
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      // 报错要说清是"出处"的问题，否则博主只会看到一句无从下手的格式错误
+      expect((await json(res)).message).toContain("出处");
+    });
+
+    it("AI 提炼的样本带出处照常通过", async () => {
+      const { token, id } = await setup();
+      const res = await call(`/api/experts/${id}/model/examples`, {
+        method: "PUT", token,
+        body: JSON.stringify({
+          items: [{
+            question: "定投的手续费怎么算",
+            answer: "看费率",
+            evidenceChunkIds: [randomUUID()],
+            origin: "ai",
+          }],
+        }),
+      });
+
+      expect(res.status).toBe(200);
+    });
+
+    it("存量草稿没有这个字段，读出来不报错（缺省视为 ai）", async () => {
+      // setup() 塞的草稿是旧结构，一个 origin 都没有 —— 线上已有的数据就长这样，
+      // ADR-003 明确不做数据迁移，所以这条是回归保护：读路径不许因此炸掉。
+      const { token, id } = await setup();
+      const m = (await json(await call(`/api/experts/${id}/model`, { token }))).data;
+
+      expect(m.draft.persona[0].origin).toBeUndefined();
+      expect(m.confirmed.persona[0].content).toBe("语气直接");
+    });
   });
 
   // ★ C9

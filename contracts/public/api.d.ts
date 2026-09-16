@@ -1035,7 +1035,9 @@ export interface paths {
          * 获取七维专家模型（AI 草稿 + 博主定稿）
          * @description draft 是 AI 生成的草稿，confirmed 是博主确认过的定稿。
          *
-         *     条目的 evidenceChunkIds 为空表示【原文里找不到出处，是 AI 推断的】—— 前端必须标红。这是防过度推断的核心机制，见产品文档 §8.3。
+         *     条目的 evidenceChunkIds 为空【且 origin 是 ai】表示原文里找不到出处、是 AI 推断的 —— 前端必须标红。这是防过度推断的核心机制，见产品文档 §8.3。
+         *
+         *     origin 为 creator 的条目是博主手写或改写的，没有出处是正常的，不标红（ADR-003）。存量数据没有这个字段，缺省视为 ai。
          */
         get: {
             parameters: {
@@ -1655,11 +1657,18 @@ export interface components {
             rating: components["schemas"]["Rating"];
             comment?: string;
         };
+        /**
+         * @description ai = AI 提炼；creator = 博主手写或改写过。缺省视为 ai。
+         * @default ai
+         * @enum {string}
+         */
+        ItemOrigin: "ai" | "creator";
         ModelItem: {
             content: string;
             confidence: number;
-            /** @description 出自哪几个知识切片。为空 = AI 推断，原文无出处，前端标红。 */
+            /** @description 出自哪几个知识切片。为空【且 origin 是 ai】= AI 推断，前端标红。 */
             evidenceChunkIds: string[];
+            origin?: components["schemas"]["ItemOrigin"];
         };
         /**
          * @description 冒充风险 / 专业建议风险 / 立场越界 —— 产品文档 §7.2 的三层边界
@@ -1674,6 +1683,7 @@ export interface components {
             question: string;
             answer: string;
             evidenceChunkIds: string[];
+            origin?: components["schemas"]["ItemOrigin"];
         };
         /** @enum {string} */
         Dimension: "persona" | "knowledge" | "beliefs" | "methodology" | "decisionRules" | "boundaries" | "examples";

@@ -1,6 +1,6 @@
 # ADR-003：七维条目需要区分「AI 提炼」与「博主手写」
 
-- **状态**：提议（等 backend 实现；前端已停下，不做 mock）
+- **状态**：已实现（backend + frontend，2026-09-16）
 - **日期**：2026-09-11
 - **相关**：`docs/M0-M6回顾与加固计划.md` 的 F02、F03；根 `CLAUDE.md`「前端发现接口缺字段：不要自己造 mock」
 
@@ -39,10 +39,19 @@ agent 不需要改：它生成的草稿不带 `origin`，按缺省即为 `"ai"`�
 
 前端的判定随之改为 `origin !== "creator" && evidenceChunkIds.length === 0`。
 
-## 在 backend 补齐之前
+## 实现记录（2026-09-16）
 
-- 前端**不做**任何推断或 mock，误标问题保留，并在 `DimensionCard.tsx` 的注释里指向本文。
-- 「真实样本」的"添加一条"入口已临时移除（F03），避免博主填完必然撞上 400。
+- backend：`ItemOrigin` 注册为具名组件，`ModelItem` / `ExampleItem` 各加一个
+  `origin`（`.default("ai")`）。`ExampleItem` 的证据约束从无条件 `min(1)`
+  改为 `.refine(origin === "creator" || evidenceChunkIds.length >= 1)` ——
+  `.refine()` 产生 ZodEffects，一度担心会让 `.openapi()` 的具名组件注册失效，
+  实测没有问题，契约里 `ExampleItem` 仍是具名组件，只是不再带 `minItems`。
+  条件约束表达不进 JSON Schema，由服务端兜底。
+- frontend：判定改为 `isAiInferred`（先排除 `creator`），
+  `emptyItem` 给新条目 `origin: "creator"`，博主改过的条目在 `patch` 里也归为
+  `creator`；「真实样本」的"添加一条"入口恢复。禁区不加 `origin`（它是平台模板）。
+- 不做数据迁移：存量 jsonb 里没有这个字段，读出来是 `undefined`，
+  前端按 `!== "creator"` 判定，等价于 `ai`。backend 有一条回归测试守着这个读路径。
 
 ## 被否决的方案
 
