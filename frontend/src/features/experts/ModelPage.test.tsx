@@ -33,12 +33,12 @@ const MODEL = {
 
 const envelope = (data: unknown) => ({ data: { code: 0, message: "ok", data } });
 
-function mockExpert(shareSlug: string | null) {
+function mockExpert(shareSlug: string | null, hasUnpublishedChanges = true) {
   GET.mockImplementation(async (path: string) =>
     path === "/api/experts/{id}/model"
       ? envelope({
           draft: MODEL, generatedAt: null, confirmed: MODEL,
-          confirmedDimensions: ["boundaries"], chunkCount: 3,
+          confirmedDimensions: ["boundaries"], chunkCount: 3, hasUnpublishedChanges,
         })
       : envelope({ id: "e1", name: "理财老王", shareSlug, confirmedDimensions: ["boundaries"] }),
   );
@@ -80,5 +80,26 @@ describe("ModelPage 的上线", () => {
 
     expect(await screen.findByText(/线上已更新/)).toBeInTheDocument();
     expect(POST).toHaveBeenCalledWith("/api/experts/{id}/publish", expect.anything());
+  });
+
+  /**
+   * F01 后半截（ADR-009）：那句「改完要再点一次上线」以前是无条件的，
+   * 于是"改了没推"和"什么都没改"长得一模一样。
+   */
+  it("有改动没推：明确提醒，按钮可点", async () => {
+    mockExpert("abc123", true);
+    renderPage();
+
+    expect(await screen.findByText(/你有修改还没推到线上/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /更新线上版本/ })).toBeEnabled();
+  });
+
+  it("没有改动：说明线上已是最新，按钮置灰", async () => {
+    mockExpert("abc123", false);
+    renderPage();
+
+    expect(await screen.findByText(/线上就是你现在看到的版本/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /更新线上版本/ })).toBeDisabled();
+    expect(screen.queryByText(/你有修改还没推到线上/)).toBeNull();
   });
 });
